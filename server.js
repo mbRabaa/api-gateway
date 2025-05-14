@@ -29,7 +29,6 @@ app.use(rateLimit({
 const SERVICES = {
   paiements: process.env.PAIEMENT_SERVICE_URL || 'http://localhost:3002',
   reservations: process.env.RESERVATION_SERVICE_URL || 'http://localhost:3004',
-  feedbacks: process.env.FEEDBACK_SERVICE_URL || 'http://localhost:3003',
   trajets: process.env.RESERVATION_SERVICE_URL || 'http://localhost:3004' // Pointant vers reservations
 };
 
