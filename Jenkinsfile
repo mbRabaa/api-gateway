@@ -3,17 +3,12 @@ pipeline {
 
     stages {
         stage('Checkout') {
-            steps {
-                checkout scm
-            }
+            steps { checkout scm }
         }
 
         stage('Install Dependencies') {
             steps {
                 sh 'npm install'
-                // Installation locale au projet plutôt que globale
-                sh 'npx eslint --version || echo "ESLint check skipped"'
-                sh 'npx babel --version || echo "Babel check skipped"'
             }
         }
 
@@ -28,7 +23,7 @@ pipeline {
                 sh 'npm test'
                 
                 // Archivage des résultats
-                junit allowEmptyResults: true, testResults: 'reports/junit.xml'
+                junit 'reports/junit.xml'
                 publishHTML target: [
                     allowMissing: true,
                     reportDir: 'coverage/lcov-report',
@@ -42,9 +37,6 @@ pipeline {
     post {
         always {
             echo "Build terminé - Statut: ${currentBuild.currentResult}"
-        }
-        failure {
-            echo "La pipeline a échoué - veuillez vérifier les logs"
         }
     }
 }
