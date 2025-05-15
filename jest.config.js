@@ -1,6 +1,4 @@
+
 module.exports = {
-  reporters: [
-    'default',
-    ['jest-junit', { outputDirectory: 'reports', outputName: 'junit.xml' }]
-  ]
+  ...require('./package.json').jest,
 };

@@ -4,7 +4,8 @@
   "description": "API Gateway pour l'application TunisBus",
   "main": "server.js",
   "scripts": {
-    "test": "NODE_ENV=test jest --coverage --forceExit --detectOpenHandles",
+    "test": "NODE_ENV=test jest --config=jest.config.js --coverage --forceExit --detectOpenHandles",
+    "test:ci": "NODE_ENV=test jest --config=jest.config.js --ci --coverage --forceExit --detectOpenHandles",
     "test:watch": "NODE_ENV=test jest --watch --detectOpenHandles",
     "test:integration": "NODE_ENV=test jest apiGateway.integration.test.js --forceExit --detectOpenHandles",
     "start": "node server.js",
@@ -28,15 +29,34 @@
   },
   "jest": {
     "testEnvironment": "node",
-    "coverageReporters": [
-      "text",
-      "lcov"
-    ],
+    "coverageDirectory": "./coverage",
+    "collectCoverage": true,
     "collectCoverageFrom": [
       "server.js",
       "**/*.js",
       "!**/node_modules/**",
       "!**/tests/**"
-    ]
+    ],
+    "coverageReporters": [
+      "text",
+      "lcov",
+      "text-summary"
+    ],
+    "reporters": [
+      "default",
+      [
+        "jest-junit",
+        {
+          "outputDirectory": "reports",
+          "outputName": "junit.xml",
+          "suiteName": "jest tests",
+          "classNameTemplate": "{classname}-{title}",
+          "titleTemplate": "{classname}-{title}",
+          "ancestorSeparator": " › ",
+          "usePathForSuiteName": "true"
+        }
+      ]
+    ],
+    "testResultsProcessor": "jest-junit"
   }
 }
