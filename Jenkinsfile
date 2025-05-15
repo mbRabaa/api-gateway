@@ -1,6 +1,11 @@
 pipeline {
     agent any
 
+    environment {
+        DOCKER_IMAGE = mbrabaa2023/api-gateway
+        DOCKER_TAG = "${env.BUILD_ID}"
+    }
+
     stages {
         stage('Checkout') {
             steps { checkout scm }
@@ -21,7 +26,26 @@ pipeline {
         stage('Test') {
             steps {
                 sh 'npm test'
-                // L'archivage des résultats est supprimé
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    docker.build("${DOCKER_IMAGE}:${DOCKER_TAG}")
+                }
+            }
+        }
+
+        stage('Push to Docker Hub') {
+            steps {
+                script {
+                    docker.withRegistry('https://registry.hub.docker.com', 'docker-hub-credentials') {
+                        docker.image("${DOCKER_IMAGE}:${DOCKER_TAG}").push()
+                        // Optionnel: Tag et push aussi en tant que 'latest'
+                        docker.image("${DOCKER_IMAGE}:${DOCKER_TAG}").push('latest')
+                    }
+                }
             }
         }
     }

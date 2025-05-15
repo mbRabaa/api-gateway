@@ -18,4 +18,4 @@ COPY . .
 EXPOSE 8000
 
 # Commande pour démarrer l'API Gateway
-CMD ["npm", "start"]
+CMD ["node", "server.js"]
