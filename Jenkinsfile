@@ -21,15 +21,7 @@ pipeline {
         stage('Test') {
             steps {
                 sh 'npm test'
-                
-                // Archivage des résultats
-                junit 'reports/junit.xml'
-                publishHTML target: [
-                    allowMissing: true,
-                    reportDir: 'coverage/lcov-report',
-                    reportFiles: 'index.html',
-                    reportName: 'Code Coverage'
-                ]
+                // L'archivage des résultats est supprimé
             }
         }
     }
