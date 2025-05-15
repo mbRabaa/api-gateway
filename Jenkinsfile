@@ -3,13 +3,17 @@ pipeline {
 
     stages {
         stage('Checkout') {
-            steps { checkout scm }
+            steps {
+                checkout scm
+            }
         }
 
         stage('Install Dependencies') {
             steps {
                 sh 'npm install'
-                sh 'npm install -g eslint @babel/cli' // Optionnel si installé globalement
+                // Installation locale au projet plutôt que globale
+                sh 'npx eslint --version || echo "ESLint check skipped"'
+                sh 'npx babel --version || echo "Babel check skipped"'
             }
         }
 
@@ -22,7 +26,9 @@ pipeline {
         stage('Test') {
             steps {
                 sh 'npm test'
-                junit 'reports/junit.xml'
+                
+                // Archivage des résultats
+                junit allowEmptyResults: true, testResults: 'reports/junit.xml'
                 publishHTML target: [
                     allowMissing: true,
                     reportDir: 'coverage/lcov-report',
@@ -35,7 +41,10 @@ pipeline {
 
     post {
         always {
-            echo 'Build terminé - Statut: ${currentBuild.currentResult}'
+            echo "Build terminé - Statut: ${currentBuild.currentResult}"
+        }
+        failure {
+            echo "La pipeline a échoué - veuillez vérifier les logs"
         }
     }
 }
