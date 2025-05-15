@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Environment
+.env
+.env.local
+.env*.local
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Coverage
+coverage/
+.nyc_output/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Tests
+junit.xml
+test-results/
+
+# Docker
+# Fichiers Docker générés/transitoires
+*.tar               # Images Docker sauvegardées
+docker-compose.override.yml  # Configurations locales
+.env                # Variables sensibles (utilisez .env.example pour le template)
+# Ngrok (si utilisé)
+ngrok.yml

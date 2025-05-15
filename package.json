@@ -4,6 +4,9 @@
   "description": "API Gateway pour l'application TunisBus",
   "main": "server.js",
   "scripts": {
+    "test": "NODE_ENV=test jest --coverage --forceExit --detectOpenHandles",
+    "test:watch": "NODE_ENV=test jest --watch --detectOpenHandles",
+    "test:integration": "NODE_ENV=test jest apiGateway.integration.test.js --forceExit --detectOpenHandles",
     "start": "node server.js",
     "dev": "nodemon server.js"
   },
@@ -15,10 +18,25 @@
     "express-rate-limit": "^7.5.0",
     "helmet": "^8.1.0",
     "morgan": "^1.10.0",
-    "rate-limit": "^0.1.1",
     "uuid": "^11.1.0"
   },
   "devDependencies": {
-    "nodemon": "^3.1.0"
+    "jest": "^29.7.0",
+    "jest-junit": "^16.0.0",
+    "nodemon": "^3.1.0",
+    "supertest": "^7.1.1"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "coverageReporters": [
+      "text",
+      "lcov"
+    ],
+    "collectCoverageFrom": [
+      "server.js",
+      "**/*.js",
+      "!**/node_modules/**",
+      "!**/tests/**"
+    ]
   }
 }
