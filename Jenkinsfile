@@ -2,7 +2,6 @@ pipeline {
     agent any
 
     environment {
-        // Correction : ajout des guillemets autour de la valeur
         DOCKER_IMAGE = 'mbrabaa2023/api-gateway'
         DOCKER_TAG = "${env.BUILD_ID}"
     }
@@ -33,7 +32,10 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    docker.build("${env.DOCKER_IMAGE}:${env.DOCKER_TAG}")
+                    // Solution recommandée: Utilisez docker.withRegistry()
+                    docker.withRegistry('https://registry.hub.docker.com', 'docker-hub-credentials') {
+                        docker.build("${env.DOCKER_IMAGE}:${env.DOCKER_TAG}")
+                    }
                 }
             }
         }
@@ -42,8 +44,10 @@ pipeline {
             steps {
                 script {
                     docker.withRegistry('https://registry.hub.docker.com', 'docker-hub-credentials') {
+                        // Pousse l'image avec le tag BUILD_ID
                         docker.image("${env.DOCKER_IMAGE}:${env.DOCKER_TAG}").push()
-                        // Optionnel : tag 'latest'
+                        
+                        // Optionnel: Tag et pousse aussi en tant que 'latest'
                         docker.image("${env.DOCKER_IMAGE}:${env.DOCKER_TAG}").push('latest')
                     }
                 }
