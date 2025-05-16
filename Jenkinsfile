@@ -2,7 +2,8 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_IMAGE = mbrabaa2023/api-gateway
+        // Correction : ajout des guillemets autour de la valeur
+        DOCKER_IMAGE = 'mbrabaa2023/api-gateway'
         DOCKER_TAG = "${env.BUILD_ID}"
     }
 
@@ -32,7 +33,7 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    docker.build("${DOCKER_IMAGE}:${DOCKER_TAG}")
+                    docker.build("${env.DOCKER_IMAGE}:${env.DOCKER_TAG}")
                 }
             }
         }
@@ -41,9 +42,9 @@ pipeline {
             steps {
                 script {
                     docker.withRegistry('https://registry.hub.docker.com', 'docker-hub-credentials') {
-                        docker.image("${DOCKER_IMAGE}:${DOCKER_TAG}").push()
-                        // Optionnel: Tag et push aussi en tant que 'latest'
-                        docker.image("${DOCKER_IMAGE}:${DOCKER_TAG}").push('latest')
+                        docker.image("${env.DOCKER_IMAGE}:${env.DOCKER_TAG}").push()
+                        // Optionnel : tag 'latest'
+                        docker.image("${env.DOCKER_IMAGE}:${env.DOCKER_TAG}").push('latest')
                     }
                 }
             }
