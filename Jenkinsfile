@@ -2,15 +2,22 @@ pipeline {
     agent any
 
     environment {
+        // Docker Configuration
         DOCKER_IMAGE = 'mbrabaa2023/api-gateway'
         DOCKER_TAG = "${env.BUILD_NUMBER}"
         CONTAINER_NAME = 'api-gateway-container'
+        
+        // Port Configuration
         HOST_PORT = '8000'
         CONTAINER_PORT = '8000'
+        
+        // Service URLs
         FRONTEND_URL = 'http://localhost:8080'
         PAIEMENT_SERVICE_URL = 'http://localhost:3002'
         RESERVATION_SERVICE_URL = 'http://localhost:3004'
         TRAJET_SERVICE_URL = 'http://localhost:3005'
+        
+        // Node Environment
         NODE_ENV = 'production'
     }
 
@@ -25,6 +32,7 @@ pipeline {
         stage('Clean Workspace') {
             steps {
                 sh '''
+                echo "Cleaning workspace..."
                 rm -rf node_modules package-lock.json
                 '''
             }
@@ -33,28 +41,34 @@ pipeline {
         stage('Install Dependencies') {
             steps {
                 sh '''
+                echo "Installing dependencies..."
                 npm install --legacy-peer-deps
                 npm install jest-junit@latest --save-dev
+                npm list
                 '''
             }
         }
 
         stage('Build') {
             steps {
-                sh 'npm run build'
+                sh '''
+                echo "Building application..."
+                npm run build
+                '''
             }
         }
 
         stage('Test') {
             steps {
                 sh '''
+                echo "Running tests..."
                 npm test || true
                 '''
             }
             post {
                 always {
-                    junit 'junit.xml'
-                    archiveArtifacts artifacts: 'coverage/**/*'
+                    junit 'reports/junit.xml'
+                    archiveArtifacts artifacts: 'coverage/**/*,reports/junit.xml'
                 }
             }
         }
@@ -65,7 +79,7 @@ pipeline {
             }
             steps {
                 script {
-                    docker.build("${env.DOCKER_IMAGE}:${env.DOCKER_TAG}")
+                    docker.build("${env.DOCKER_IMAGE}:${env.DOCKER_TAG}", "--build-arg NODE_ENV=${env.NODE_ENV} .")
                 }
             }
         }
@@ -82,8 +96,10 @@ pipeline {
                         passwordVariable: 'DOCKER_PASS'
                     )]) {
                         sh """
-                        echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                        echo "${DOCKER_PASS}" | docker login -u "${DOCKER_USER}" --password-stdin
                         docker push ${env.DOCKER_IMAGE}:${env.DOCKER_TAG}
+                        docker tag ${env.DOCKER_IMAGE}:${env.DOCKER_TAG} ${env.DOCKER_IMAGE}:latest
+                        docker push ${env.DOCKER_IMAGE}:latest
                         """
                     }
                 }
@@ -99,6 +115,9 @@ pipeline {
                     sh """
                     docker stop ${env.CONTAINER_NAME} || true
                     docker rm ${env.CONTAINER_NAME} || true
+                    """
+                    
+                    sh """
                     docker run -d \
                         --name ${env.CONTAINER_NAME} \
                         -p ${env.HOST_PORT}:${env.CONTAINER_PORT} \
@@ -110,6 +129,15 @@ pipeline {
                         --restart unless-stopped \
                         ${env.DOCKER_IMAGE}:${env.DOCKER_TAG}
                     """
+                    
+                    sh """
+                    echo "Container status:"
+                    docker ps -a | grep ${env.CONTAINER_NAME}
+                    echo "Waiting for service to start..."
+                    sleep 15
+                    echo "Health check:"
+                    curl -I http://localhost:${env.HOST_PORT}/health || true
+                    """
                 }
             }
         }
@@ -117,8 +145,18 @@ pipeline {
 
     post {
         always {
-            echo "Build status: ${currentBuild.currentResult}"
+            echo "Pipeline completed - Status: ${currentBuild.currentResult}"
+            script {
+                def commitId = readFile('.git/commit-id').trim()
+                currentBuild.description = "Build #${env.BUILD_NUMBER} (${commitId.take(7)})"
+            }
             cleanWs()
+        }
+        success {
+            echo "Build succeeded!"
+        }
+        failure {
+            echo "Build failed!"
         }
     }
 }

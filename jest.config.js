@@ -11,14 +11,17 @@ module.exports = {
   coverageReporters: ['text', 'lcov', 'text-summary'],
   reporters: [
     'default',
-    ['jest-junit', {
-      outputDirectory: '.',
-      outputName: 'junit.xml',
-      suiteName: 'jest tests',
-      classNameTemplate: '{classname}-{title}',
-      titleTemplate: '{classname}-{title}',
-      ancestorSeparator: ' › ',
-      usePathForSuiteName: 'true'
-    }]
+    [
+      './node_modules/jest-junit',
+      {
+        outputDirectory: '.',
+        outputName: 'junit.xml',
+        suiteName: 'jest tests',
+        classNameTemplate: '{classname}-{title}',
+        titleTemplate: '{classname}-{title}',
+        ancestorSeparator: ' › ',
+        usePathForSuiteName: 'true'
+      }
+    ]
   ]
 };
