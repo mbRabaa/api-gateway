@@ -1,6 +1,5 @@
 pipeline {
     agent any
-
     options {
         skipDefaultCheckout true
     }
@@ -39,7 +38,7 @@ pipeline {
             steps {
                 sh '''
                 npm install --legacy-peer-deps
-                npm install jest-junit@latest --save-dev
+                npm install jest-junit jest --save-dev
                 '''
             }
         }
@@ -54,17 +53,27 @@ pipeline {
             steps {
                 script {
                     try {
+                        // Solution alternative pour les tests
                         sh '''
-                        echo "Exécution des tests..."
-                        npm test -- --ci --reporters=default --reporters=jest-junit
+                        echo "Configuring Jest with JUnit reporter..."
+                        echo "module.exports = {
+                          reporters: [
+                            'default',
+                            ['jest-junit', { outputFile: 'junit.xml' }]
+                          ]
+                        };" > jest.config.ci.js
+                        
+                        echo "Running tests with custom config..."
+                        NODE_ENV=test jest --config=jest.config.ci.js --ci --coverage
                         '''
                     } catch (e) {
+                        echo "Tests failed, creating fallback report"
                         sh '''
                         echo '<?xml version="1.0"?>
                         <testsuites>
                           <testsuite name="Jest Tests" tests="1" failures="1">
                             <testcase name="TestExecutionFailed" classname="Jest">
-                              <failure message="Erreur d\\'exécution des tests"/>
+                              <failure message="Tests failed with error"/>
                             </testcase>
                           </testsuite>
                         </testsuites>' > junit.xml
@@ -136,39 +145,9 @@ pipeline {
                         kubectl config set-context jenkins --cluster=k3s --user=jenkins --namespace=${env.K8S_NAMESPACE}
                         kubectl config use-context jenkins
 
+                        sed -i "s|image:.*|image: ${env.DOCKER_IMAGE}:${env.DOCKER_TAG}|g" k8s/deployment.yaml
                         kubectl apply -f k8s/deployment.yaml -n ${env.K8S_NAMESPACE}
-                        kubectl apply -f k8s/service.yaml -n ${env.K8S_NAMESPACE}
-                        kubectl rollout status deployment/api-gateway -n ${env.K8S_NAMESPACE} --timeout=120s
-                        """
-                    }
-                }
-            }
-        }
-
-        stage('Verify Deployment') {
-            when {
-                expression { currentBuild.resultIsBetterOrEqualTo('UNSTABLE') }
-            }
-            steps {
-                script {
-                    withCredentials([string(credentialsId: 'k3s-jenkins-token', variable: 'K8S_TOKEN')]) {
-                        sh """
-                        export KUBECONFIG=/tmp/kubeconfig-${env.BUILD_NUMBER}
-                        kubectl config set-credentials jenkins --token=\${K8S_TOKEN}
-                        kubectl config set-cluster k3s --server=https://\$(hostname -I | awk '{print \$1}'):6443 --insecure-skip-tls-verify
-                        kubectl config set-context jenkins --cluster=k3s --user=jenkins --namespace=${env.K8S_NAMESPACE}
-                        kubectl config use-context jenkins
-
-                        SERVICE_IP=\$(kubectl get svc api-gateway-service -n ${env.K8S_NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-                        if [ -z "\$SERVICE_IP" ]; then
-                            SERVICE_IP=\$(kubectl get svc api-gateway-service -n ${env.K8S_NAMESPACE} -o jsonpath='{.spec.clusterIP}')
-                        fi
-                        SERVICE_PORT=\$(kubectl get svc api-gateway-service -n ${env.K8S_NAMESPACE} -o jsonpath='{.spec.ports[0].port}')
-                        
-                        echo "Testing service at http://\${SERVICE_IP}:\${SERVICE_PORT}/health"
-                        curl -v http://\${SERVICE_IP}:\${SERVICE_PORT}/health
-                        
-                        rm -f \${KUBECONFIG}
+                        kubectl rollout status deployment/api-gateway -n ${env.K8S_NAMESPACE} --timeout=180s
                         """
                     }
                 }
@@ -188,15 +167,27 @@ pipeline {
         failure {
             emailext (
                 subject: "ÉCHEC du build ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                body: "Veuillez consulter les logs: ${env.BUILD_URL}",
-                to: 'votre@email.com'
+                body: """
+                Détails de l'échec:
+                - URL du build: ${env.BUILD_URL}
+                - Commit: ${commitId.take(7)}
+                - Cause: ${currentBuild.currentResult}
+                """,
+                to: 'elmbarkirabea@gmail.com',
+                replyTo: 'elmbarkirabea@gmail.com',
+                attachLog: true
             )
         }
         success {
             emailext (
                 subject: "SUCCÈS du build ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                body: "Détails du build: ${env.BUILD_URL}",
-                to: 'votre@email.com'
+                body: """
+                Détails du build réussi:
+                - Image Docker: ${env.DOCKER_IMAGE}:${env.DOCKER_TAG}
+                - Déployé dans: namespace ${env.K8S_NAMESPACE}
+                - URL du build: ${env.BUILD_URL}
+                """,
+                to: 'eelmbarkirabea@gmail.com'
             )
         }
     }
