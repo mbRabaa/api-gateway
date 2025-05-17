@@ -4,7 +4,7 @@
   "description": "API Gateway pour l'application TunisBus",
   "main": "server.js",
   "scripts": {
-    "pretest": "rm -rf reports && mkdir -p reports",
+    "pretest": "rm -f junit.xml && mkdir -p reports",
     "test": "NODE_ENV=test jest --config=jest.config.js --coverage --forceExit --detectOpenHandles",
     "test:ci": "NODE_ENV=test jest --config=jest.config.js --ci --coverage --forceExit --detectOpenHandles",
     "test:watch": "NODE_ENV=test jest --watch --detectOpenHandles",
@@ -51,9 +51,9 @@
     "reporters": [
       "default",
       [
-        "./node_modules/jest-junit",
+        "jest-junit",
         {
-          "outputDirectory": "reports",
+          "outputDirectory": ".",
           "outputName": "junit.xml",
           "suiteName": "jest tests",
           "classNameTemplate": "{classname}-{title}",

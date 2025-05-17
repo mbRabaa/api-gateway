@@ -12,7 +12,7 @@ module.exports = {
   reporters: [
     'default',
     [
-      './node_modules/jest-junit',
+      'jest-junit',
       {
         outputDirectory: '.',
         outputName: 'junit.xml',
