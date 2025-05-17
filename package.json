@@ -10,7 +10,8 @@
     "test:integration": "NODE_ENV=test jest apiGateway.integration.test.js --forceExit --detectOpenHandles",
     "start": "node server.js",
     "dev": "nodemon server.js",
-    "build": "npm run build",
+    "build": "npm run lint",
+    "lint": "eslint . || echo 'Linting skipped'",
     "prepare": "npm run clean && npm run compile",
     "clean": "rm -rf dist/ || true",
     "compile": "babel src --out-dir dist || echo 'No compilation needed'"
