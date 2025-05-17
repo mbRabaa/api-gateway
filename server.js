@@ -39,6 +39,19 @@ app.use((req, res, next) => {
   next();
 });
 
+// Route pour la racine
+app.get('/', (req, res) => {
+  res.status(200).json({
+    message: "Bienvenue sur l'API Gateway TunisBus",
+    version: process.env.npm_package_version || '1.0.0',
+    documentation: process.env.API_DOCS_URL || '/api-docs',
+    requestId: req.requestId,
+    availableServices: Object.keys(SERVICES),
+    healthCheck: '/health',
+    servicesList: '/services'
+  });
+});
+
 // Proxy intelligent
 const createServiceProxy = (serviceName) => async (req, res) => {
   try {
@@ -120,6 +133,7 @@ app.use((req, res) => {
     error: 'Endpoint not found',
     requestId: req.requestId,
     availableEndpoints: [
+      '/',
       '/api/trajets',
       '/api/reservations',
       '/api/paiements',
@@ -153,6 +167,7 @@ if (process.env.NODE_ENV !== 'test') {
     console.table(servicesTable);
     
     console.log('\n📊 Endpoints utilitaires:');
+    console.log('- /\t\t\tPage d\'accueil');
     console.log('- /health\t\tHealth check');
     console.log('- /services\t\tListe des services');
     console.log('\n🛠️ Mode:', process.env.NODE_ENV || 'development');
