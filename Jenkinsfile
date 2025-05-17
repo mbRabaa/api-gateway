@@ -57,7 +57,7 @@ pipeline {
                     <testsuites>
                       <testsuite name="Jest Tests" tests="1" failures="1">
                         <testcase name="TestExecutionFailed" classname="Jest">
-                          <failure message="Erreur d\'exécution des tests - jest-junit non trouvé"/>
+                          <failure message="Erreur d\\'exécution des tests - jest-junit non trouvé"/>
                         </testcase>
                       </testsuite>
                     </testsuites>' > junit.xml
@@ -84,7 +84,7 @@ pipeline {
                         passwordVariable: 'DOCKER_PASS'
                     )]) {
                         sh """
-                        echo "${DOCKER_PASS}" | docker login -u "${DOCKER_USER}" --password-stdin
+                        echo "\${DOCKER_PASS}" | docker login -u "\${DOCKER_USER}" --password-stdin
                         docker build -t ${env.DOCKER_IMAGE}:${env.DOCKER_TAG} .
                         """
                     }
@@ -104,7 +104,7 @@ pipeline {
                         passwordVariable: 'DOCKER_PASS'
                     )]) {
                         sh """
-                        echo "${DOCKER_PASS}" | docker login -u "${DOCKER_USER}" --password-stdin
+                        echo "\${DOCKER_PASS}" | docker login -u "\${DOCKER_USER}" --password-stdin
                         docker push ${env.DOCKER_IMAGE}:${env.DOCKER_TAG}
                         docker tag ${env.DOCKER_IMAGE}:${env.DOCKER_TAG} ${env.DOCKER_IMAGE}:latest
                         docker push ${env.DOCKER_IMAGE}:latest
@@ -123,13 +123,13 @@ pipeline {
                     withCredentials([string(credentialsId: 'k3s-jenkins-token', variable: 'K8S_TOKEN')]) {
                         sh """
                         # Configurer l'accès kubectl
-                        kubectl config set-credentials jenkins --token=${K8S_TOKEN}
-                        kubectl config set-cluster k3s --server=https://$(hostname -I | awk '{print $1}'):6443 --insecure-skip-tls-verify
+                        kubectl config set-credentials jenkins --token=\${K8S_TOKEN}
+                        kubectl config set-cluster k3s --server=https://\$(hostname -I | awk '{print \$1}'):6443 --insecure-skip-tls-verify
                         kubectl config set-context jenkins --cluster=k3s --user=jenkins --namespace=${env.K8S_NAMESPACE}
                         kubectl config use-context jenkins
                         
                         # Mettre à jour l'image dans le deployment
-                        sed -i 's/\\\${DOCKER_TAG}/${env.DOCKER_TAG}/g' k8s/deployment.yaml
+                        sed -i 's/\\\$\\{DOCKER_TAG\\}/${env.DOCKER_TAG}/g' k8s/deployment.yaml
                         
                         # Appliquer les configurations
                         kubectl apply -f k8s/deployment.yaml
@@ -150,8 +150,8 @@ pipeline {
                         sh """
                         # Configurer l'accès temporaire
                         export KUBECONFIG=/tmp/kubeconfig-${env.BUILD_NUMBER}
-                        kubectl config set-credentials jenkins --token=${K8S_TOKEN}
-                        kubectl config set-cluster k3s --server=https://$(hostname -I | awk '{print $1}'):6443 --insecure-skip-tls-verify
+                        kubectl config set-credentials jenkins --token=\${K8S_TOKEN}
+                        kubectl config set-cluster k3s --server=https://\$(hostname -I | awk '{print \$1}'):6443 --insecure-skip-tls-verify
                         kubectl config set-context jenkins --cluster=k3s --user=jenkins --namespace=${env.K8S_NAMESPACE}
                         kubectl config use-context jenkins
                         
@@ -166,15 +166,15 @@ pipeline {
                         kubectl get deployment
                         
                         # Test de santé
-                        NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
-                        NODE_PORT=$(kubectl get svc api-gateway-service -o jsonpath='{.spec.ports[0].nodePort}')
-                        echo "URL du service: http://${NODE_IP}:${NODE_PORT}"
+                        NODE_IP=\$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
+                        NODE_PORT=\$(kubectl get svc api-gateway-service -o jsonpath='{.spec.ports[0].nodePort}')
+                        echo "URL du service: http://\${NODE_IP}:\${NODE_PORT}"
                         
                         echo "=== Test de santé ==="
-                        curl -v http://${NODE_IP}:${NODE_PORT}/health
+                        curl -v http://\${NODE_IP}:\${NODE_PORT}/health
                         
                         # Nettoyer
-                        rm ${KUBECONFIG}
+                        rm \${KUBECONFIG}
                         """
                     }
                 }
