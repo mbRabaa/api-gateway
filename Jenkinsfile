@@ -48,23 +48,21 @@ pipeline {
 
         stage('Test') {
             steps {
-                script {
-                    sh('''#!/bin/bash
-                    echo "Exécution des tests..."
-                    npm test || true
-                    
-                    if [ ! -f junit.xml ]; then
-                        echo '<?xml version="1.0"?>
-                        <testsuites>
-                          <testsuite name="Jest Tests" tests="1" failures="1">
-                            <testcase name="TestExecutionFailed" classname="Jest">
-                              <failure message="Erreur d\\'exécution des tests - jest-junit non trouvé"/>
-                            </testcase>
-                          </testsuite>
-                        </testsuites>' > junit.xml
-                    fi
-                    ''')
-                }
+                sh '''
+                echo "Exécution des tests..."
+                npm test || true
+                
+                if [ ! -f junit.xml ]; then
+                    echo '<?xml version="1.0"?>
+                    <testsuites>
+                      <testsuite name="Jest Tests" tests="1" failures="1">
+                        <testcase name="TestExecutionFailed" classname="Jest">
+                          <failure message="Erreur d\\'exécution des tests - jest-junit non trouvé"/>
+                        </testcase>
+                      </testsuite>
+                    </testsuites>' > junit.xml
+                fi
+                '''
             }
             post {
                 always {
@@ -85,10 +83,10 @@ pipeline {
                         usernameVariable: 'DOCKER_USER',
                         passwordVariable: 'DOCKER_PASS'
                     )]) {
-                        sh('''#!/bin/bash
-                        echo "${DOCKER_PASS}" | docker login -u "${DOCKER_USER}" --password-stdin
-                        docker build -t ''' + env.DOCKER_IMAGE + ''':''' + env.DOCKER_TAG + ''' .
-                        ''')
+                        sh """
+                        echo "\${DOCKER_PASS}" | docker login -u "\${DOCKER_USER}" --password-stdin
+                        docker build -t ${env.DOCKER_IMAGE}:${env.DOCKER_TAG} .
+                        """
                     }
                 }
             }
@@ -105,12 +103,12 @@ pipeline {
                         usernameVariable: 'DOCKER_USER',
                         passwordVariable: 'DOCKER_PASS'
                     )]) {
-                        sh('''#!/bin/bash
-                        echo "${DOCKER_PASS}" | docker login -u "${DOCKER_USER}" --password-stdin
-                        docker push ''' + env.DOCKER_IMAGE + ''':''' + env.DOCKER_TAG + '''
-                        docker tag ''' + env.DOCKER_IMAGE + ''':''' + env.DOCKER_TAG + ''' ''' + env.DOCKER_IMAGE + ''':latest
-                        docker push ''' + env.DOCKER_IMAGE + ''':latest
-                        ''')
+                        sh """
+                        echo "\${DOCKER_PASS}" | docker login -u "\${DOCKER_USER}" --password-stdin
+                        docker push ${env.DOCKER_IMAGE}:${env.DOCKER_TAG}
+                        docker tag ${env.DOCKER_IMAGE}:${env.DOCKER_TAG} ${env.DOCKER_IMAGE}:latest
+                        docker push ${env.DOCKER_IMAGE}:latest
+                        """
                     }
                 }
             }
@@ -123,15 +121,15 @@ pipeline {
             steps {
                 script {
                     withCredentials([string(credentialsId: 'k3s-jenkins-token', variable: 'K8S_TOKEN')]) {
-                        sh('''#!/bin/bash
+                        sh """
                         # Configurer l'accès kubectl
-                        kubectl config set-credentials jenkins --token=''' + K8S_TOKEN + '''
-                        kubectl config set-cluster k3s --server=https://$(hostname -I | awk \'{print $1}\'):6443 --insecure-skip-tls-verify
-                        kubectl config set-context jenkins --cluster=k3s --user=jenkins --namespace=''' + env.K8S_NAMESPACE + '''
+                        kubectl config set-credentials jenkins --token=\${K8S_TOKEN}
+                        kubectl config set-cluster k3s --server=https://\$(hostname -I | awk '{print \$1}'):6443 --insecure-skip-tls-verify
+                        kubectl config set-context jenkins --cluster=k3s --user=jenkins --namespace=${env.K8S_NAMESPACE}
                         kubectl config use-context jenkins
                         
                         # Mettre à jour l'image dans le deployment
-                        sed -i "s/\\${DOCKER_TAG}/''' + env.DOCKER_TAG + '''/g" k8s/deployment.yaml
+                        sed -i 's/\\\$\\{DOCKER_TAG\\}/${env.DOCKER_TAG}/g' k8s/deployment.yaml
                         
                         # Appliquer les configurations
                         kubectl apply -f k8s/deployment.yaml
@@ -139,7 +137,7 @@ pipeline {
                         
                         # Vérifier le déploiement
                         kubectl rollout status deployment/api-gateway --timeout=120s
-                        ''')
+                        """
                     }
                 }
             }
@@ -149,12 +147,12 @@ pipeline {
             steps {
                 script {
                     withCredentials([string(credentialsId: 'k3s-jenkins-token', variable: 'K8S_TOKEN')]) {
-                        sh('''#!/bin/bash
+                        sh """
                         # Configurer l'accès temporaire
-                        export KUBECONFIG=/tmp/kubeconfig-''' + env.BUILD_NUMBER + '''
-                        kubectl config set-credentials jenkins --token=''' + K8S_TOKEN + '''
-                        kubectl config set-cluster k3s --server=https://$(hostname -I | awk \'{print $1}\'):6443 --insecure-skip-tls-verify
-                        kubectl config set-context jenkins --cluster=k3s --user=jenkins --namespace=''' + env.K8S_NAMESPACE + '''
+                        export KUBECONFIG=/tmp/kubeconfig-${env.BUILD_NUMBER}
+                        kubectl config set-credentials jenkins --token=\${K8S_TOKEN}
+                        kubectl config set-cluster k3s --server=https://\$(hostname -I | awk '{print \$1}'):6443 --insecure-skip-tls-verify
+                        kubectl config set-context jenkins --cluster=k3s --user=jenkins --namespace=${env.K8S_NAMESPACE}
                         kubectl config use-context jenkins
                         
                         # Vérifier les ressources
@@ -168,16 +166,16 @@ pipeline {
                         kubectl get deployment
                         
                         # Test de santé
-                        NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
-                        NODE_PORT=$(kubectl get svc api-gateway-service -o jsonpath='{.spec.ports[0].nodePort}')
-                        echo "URL du service: http://${NODE_IP}:${NODE_PORT}"
+                        NODE_IP=\$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
+                        NODE_PORT=\$(kubectl get svc api-gateway-service -o jsonpath='{.spec.ports[0].nodePort}')
+                        echo "URL du service: http://\${NODE_IP}:\${NODE_PORT}"
                         
                         echo "=== Test de santé ==="
-                        curl -v http://${NODE_IP}:${NODE_PORT}/health
+                        curl -v http://\${NODE_IP}:\${NODE_PORT}/health
                         
                         # Nettoyer
-                        rm ${KUBECONFIG}
-                        ''')
+                        rm \${KUBECONFIG}
+                        """
                     }
                 }
             }
