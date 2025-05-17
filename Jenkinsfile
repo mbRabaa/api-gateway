@@ -2,19 +2,12 @@ pipeline {
     agent any
     options {
         skipDefaultCheckout true
+        timeout(time: 30, unit: 'MINUTES')
     }
 
     environment {
         DOCKER_IMAGE = 'mbrabaa2023/api-gateway'
         DOCKER_TAG = "${env.BUILD_NUMBER}"
-        CONTAINER_NAME = 'api-gateway-container'
-        HOST_PORT = '8000'
-        CONTAINER_PORT = '8000'
-        FRONTEND_URL = 'http://localhost:8080'
-        PAIEMENT_SERVICE_URL = 'http://localhost:3002'
-        RESERVATION_SERVICE_URL = 'http://localhost:3004'
-        TRAJET_SERVICE_URL = 'http://localhost:3005'
-        NODE_ENV = 'production'
         K8S_NAMESPACE = 'frontend'
     }
 
@@ -54,6 +47,11 @@ pipeline {
                 script {
                     try {
                         sh '''
+                        # Solution pour le conflit de configuration Jest
+                        if [ -f jest.config.js ]; then
+                            mv jest.config.js jest.config.js.backup
+                        fi
+                        
                         NODE_ENV=test jest --ci --coverage --reporters=default --reporters=jest-junit
                         '''
                     } catch (e) {
@@ -130,17 +128,35 @@ pipeline {
                 script {
                     withCredentials([string(credentialsId: 'k3s-jenkins-token', variable: 'K8S_TOKEN')]) {
                         sh """
-                        # Configurer kubectl pour Jenkins
-                        mkdir -p ~/.kube
-                        kubectl config set-cluster k3s --server=https://\$(hostname -I | awk '{print \$1}'):6443 --insecure-skip-tls-verify
-                        kubectl config set-credentials jenkins --token=\${K8S_TOKEN}
-                        kubectl config set-context jenkins --cluster=k3s --user=jenkins --namespace=${env.K8S_NAMESPACE}
-                        kubectl config use-context jenkins
+                        # Création d'un kubeconfig temporaire
+                        mkdir -p ${WORKSPACE}/.kube
+                        cat > ${WORKSPACE}/.kube/config <<EOF
+                        apiVersion: v1
+                        kind: Config
+                        clusters:
+                        - cluster:
+                            server: https://\$(hostname -I | awk '{print \$1}'):6443
+                            insecure-skip-tls-verify: true
+                          name: k3s
+                        contexts:
+                        - context:
+                            cluster: k3s
+                            user: jenkins
+                            namespace: ${env.K8S_NAMESPACE}
+                          name: jenkins
+                        current-context: jenkins
+                        users:
+                        - name: jenkins
+                          user:
+                            token: ${K8S_TOKEN}
+                        EOF
 
-                        # Mettre à jour et appliquer le déploiement
+                        # Mise à jour de l'image dans le fichier deployment.yaml existant
                         sed -i "s|image:.*|image: ${env.DOCKER_IMAGE}:${env.DOCKER_TAG}|g" k8s/deployment.yaml
-                        kubectl apply -f k8s/deployment.yaml -n ${env.K8S_NAMESPACE}
-                        kubectl rollout status deployment/api-gateway -n ${env.K8S_NAMESPACE} --timeout=180s
+                        
+                        # Déploiement avec le kubeconfig spécifique
+                        kubectl --kubeconfig=${WORKSPACE}/.kube/config apply -f k8s/deployment.yaml
+                        kubectl --kubeconfig=${WORKSPACE}/.kube/config rollout status deployment/api-gateway -n ${env.K8S_NAMESPACE} --timeout=180s
                         """
                     }
                 }
@@ -166,47 +182,37 @@ pipeline {
             script {
                 try {
                     def commitId = readFile('.git/commit-id').trim()
-                    emailext (
-                        subject: "ÉCHEC du build ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                        body: """
-                        Détails de l'échec:
-                        - URL du build: ${env.BUILD_URL}
-                        - Commit: ${commitId.take(7)}
-                        - Cause: ${currentBuild.currentResult}
-                        """,
-                        to: 'elmbarkirabea@gmail.com',
-                        replyTo: 'elmbarkirabea@gmail.com',
-                        attachLog: true
-                    )
+                    mail to: 'elmbarkirabea@gmail.com',
+                         subject: "ÉCHEC du build ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                         body: """
+                         Détails de l'échec:
+                         - URL du build: ${env.BUILD_URL}
+                         - Commit: ${commitId.take(7)}
+                         - Cause: ${currentBuild.currentResult}
+                         """
                 } catch (e) {
-                    emailext (
-                        subject: "ÉCHEC du build ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                        body: """
-                        Détails de l'échec:
-                        - URL du build: ${env.BUILD_URL}
-                        - Cause: ${currentBuild.currentResult}
-                        """,
-                        to: 'elmbarkirabea@gmail.com',
-                        replyTo: 'elmbarkirabea@gmail.com',
-                        attachLog: true
-                    )
+                    mail to: 'elmbarkirabea@gmail.com',
+                         subject: "ÉCHEC du build ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                         body: """
+                         Détails de l'échec:
+                         - URL du build: ${env.BUILD_URL}
+                         - Cause: ${currentBuild.currentResult}
+                         """
                 }
             }
         }
         success {
             script {
                 def commitId = readFile('.git/commit-id').trim()
-                emailext (
-                    subject: "SUCCÈS du build ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                    body: """
-                    Détails du build réussi:
-                    - Image Docker: ${env.DOCKER_IMAGE}:${env.DOCKER_TAG}
-                    - Déployé dans: namespace ${env.K8S_NAMESPACE}
-                    - URL du build: ${env.BUILD_URL}
-                    - Commit: ${commitId.take(7)}
-                    """,
-                    to: 'eelmbarkirabea@gmail.com'
-                )
+                mail to: 'eelmbarkirabea@gmail.com',
+                     subject: "SUCCÈS du build ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                     body: """
+                     Détails du build réussi:
+                     - Image Docker: ${env.DOCKER_IMAGE}:${env.DOCKER_TAG}
+                     - Déployé dans: namespace ${env.K8S_NAMESPACE}
+                     - URL du build: ${env.BUILD_URL}
+                     - Commit: ${commitId.take(7)}
+                     """
             }
         }
     }
