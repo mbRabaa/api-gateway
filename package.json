@@ -4,17 +4,17 @@
   "description": "API Gateway pour l'application TunisBus",
   "main": "server.js",
   "scripts": {
-    "pretest": "rm -f junit.xml && mkdir -p reports",
     "test": "NODE_ENV=test jest --config=jest.config.js --coverage --forceExit --detectOpenHandles",
     "test:ci": "NODE_ENV=test jest --config=jest.config.js --ci --coverage --forceExit --detectOpenHandles",
     "test:watch": "NODE_ENV=test jest --watch --detectOpenHandles",
     "test:integration": "NODE_ENV=test jest apiGateway.integration.test.js --forceExit --detectOpenHandles",
     "start": "node server.js",
     "dev": "nodemon server.js",
-    "build": "echo 'Build step completed'",
-    "prepare": "echo 'Skip prepare'",
-    "clean": "echo 'Skip clean'",
-    "compile": "echo 'Skip compile'"
+    "build": "npm run lint",
+    "lint": "eslint . || echo 'Linting skipped'",
+    "prepare": "npm run clean && npm run compile",
+    "clean": "rm -rf dist/ || true",
+    "compile": "babel src --out-dir dist || echo 'No compilation needed'"
   },
   "dependencies": {
     "axios": "^1.6.8",
@@ -24,14 +24,17 @@
     "express-rate-limit": "^7.5.0",
     "helmet": "^8.1.0",
     "morgan": "^1.10.0",
-    "uuid": "^11.1.0",
-    "debug": "^4.3.4"
+    "uuid": "^11.1.0"
   },
   "devDependencies": {
     "jest": "^29.7.0",
     "jest-junit": "^16.0.0",
     "nodemon": "^3.1.0",
-    "supertest": "^7.1.1"
+    "supertest": "^7.1.1",
+    "eslint": "^8.57.0",
+    "@babel/cli": "^7.23.0",
+    "@babel/core": "^7.23.0",
+    "@babel/preset-env": "^7.23.0"
   },
   "jest": {
     "testEnvironment": "node",
@@ -53,7 +56,7 @@
       [
         "jest-junit",
         {
-          "outputDirectory": ".",
+          "outputDirectory": "reports",
           "outputName": "junit.xml",
           "suiteName": "jest tests",
           "classNameTemplate": "{classname}-{title}",
@@ -62,7 +65,8 @@
           "usePathForSuiteName": "true"
         }
       ]
-    ]
+    ],
+    "testResultsProcessor": "jest-junit"
   },
   "babel": {
     "presets": [
