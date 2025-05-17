@@ -12,6 +12,7 @@ pipeline {
         RESERVATION_SERVICE_URL = 'http://localhost:3004'
         TRAJET_SERVICE_URL = 'http://localhost:3005'
         NODE_ENV = 'production'
+        K8S_NAMESPACE = 'frontend'
     }
 
     stages {
@@ -51,7 +52,6 @@ pipeline {
                 echo "Exécution des tests..."
                 npm test || true
                 
-                # Fallback amélioré
                 if [ ! -f junit.xml ]; then
                     echo '<?xml version="1.0"?>
                     <testsuites>
@@ -114,45 +114,69 @@ pipeline {
             }
         }
 
-        stage('Deploy') {
+        stage('Deploy to k3s') {
             when {
                 expression { currentBuild.resultIsBetterOrEqualTo('UNSTABLE') }
             }
             steps {
                 script {
-                    sh """
-                    docker stop ${env.CONTAINER_NAME} || true
-                    docker rm ${env.CONTAINER_NAME} || true
-                    docker run -d \\
-                        --name ${env.CONTAINER_NAME} \\
-                        -p ${env.HOST_PORT}:${env.CONTAINER_PORT} \\
-                        -e PORT=${env.CONTAINER_PORT} \\
-                        -e FRONTEND_URL=${env.FRONTEND_URL} \\
-                        -e PAIEMENT_SERVICE_URL=${env.PAIEMENT_SERVICE_URL} \\
-                        -e RESERVATION_SERVICE_URL=${env.RESERVATION_SERVICE_URL} \\
-                        -e TRAJET_SERVICE_URL=${env.TRAJET_SERVICE_URL} \\
-                        --restart unless-stopped \\
-                        ${env.DOCKER_IMAGE}:${env.DOCKER_TAG}
-                    """
+                    withCredentials([string(credentialsId: 'k3s-jenkins-token', variable: 'K8S_TOKEN')]) {
+                        sh """
+                        # Configurer l'accès kubectl
+                        kubectl config set-credentials jenkins --token=${K8S_TOKEN}
+                        kubectl config set-cluster k3s --server=https://$(hostname -I | awk '{print $1}'):6443 --insecure-skip-tls-verify
+                        kubectl config set-context jenkins --cluster=k3s --user=jenkins --namespace=${env.K8S_NAMESPACE}
+                        kubectl config use-context jenkins
+                        
+                        # Mettre à jour l'image dans le deployment
+                        sed -i 's/\\\${DOCKER_TAG}/${env.DOCKER_TAG}/g' k8s/deployment.yaml
+                        
+                        # Appliquer les configurations
+                        kubectl apply -f k8s/deployment.yaml
+                        kubectl apply -f k8s/service.yaml
+                        
+                        # Vérifier le déploiement
+                        kubectl rollout status deployment/api-gateway --timeout=120s
+                        """
+                    }
                 }
             }
         }
 
-        stage('Health Check') {
+        stage('Verify Deployment') {
             steps {
                 script {
-                    sh """
-                    echo "Vérification du déploiement..."
-                    sleep 15  # Augmentation du délai pour les applications lourdes
-                    HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:${env.HOST_PORT}/health)
-                    if [ "\$HTTP_STATUS" -eq 200 ]; then
-                        echo "Health check réussi (Status: \$HTTP_STATUS)"
-                    else
-                        echo "Échec du health check (Status: \$HTTP_STATUS)"
-                        docker logs ${env.CONTAINER_NAME} --tail 50
-                        exit 1
-                    fi
-                    """
+                    withCredentials([string(credentialsId: 'k3s-jenkins-token', variable: 'K8S_TOKEN')]) {
+                        sh """
+                        # Configurer l'accès temporaire
+                        export KUBECONFIG=/tmp/kubeconfig-${env.BUILD_NUMBER}
+                        kubectl config set-credentials jenkins --token=${K8S_TOKEN}
+                        kubectl config set-cluster k3s --server=https://$(hostname -I | awk '{print $1}'):6443 --insecure-skip-tls-verify
+                        kubectl config set-context jenkins --cluster=k3s --user=jenkins --namespace=${env.K8S_NAMESPACE}
+                        kubectl config use-context jenkins
+                        
+                        # Vérifier les ressources
+                        echo "=== Pods ==="
+                        kubectl get pods -o wide
+                        
+                        echo "=== Services ==="
+                        kubectl get svc
+                        
+                        echo "=== Déploiement ==="
+                        kubectl get deployment
+                        
+                        # Test de santé
+                        NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
+                        NODE_PORT=$(kubectl get svc api-gateway-service -o jsonpath='{.spec.ports[0].nodePort}')
+                        echo "URL du service: http://${NODE_IP}:${NODE_PORT}"
+                        
+                        echo "=== Test de santé ==="
+                        curl -v http://${NODE_IP}:${NODE_PORT}/health
+                        
+                        # Nettoyer
+                        rm ${KUBECONFIG}
+                        """
+                    }
                 }
             }
         }
