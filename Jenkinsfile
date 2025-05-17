@@ -19,6 +19,7 @@ pipeline {
         
         // Node Configuration
         NODE_ENV = 'production'
+        DOCKER_REGISTRY = 'https://index.docker.io/v1/'
     }
 
     stages {
@@ -45,6 +46,7 @@ pipeline {
                 sh '''
                 echo "Installing dependencies..."
                 npm install --legacy-peer-deps
+                npm install jest-junit --save-dev
                 npm install debug@latest --save
                 npm list
                 '''
@@ -64,7 +66,7 @@ pipeline {
             steps {
                 sh '''
                 echo "Running tests..."
-                npm test || true
+                npm test
                 '''
             }
             post {
@@ -98,7 +100,7 @@ pipeline {
                         passwordVariable: 'DOCKER_PASS'
                     )]) {
                         sh """
-                        docker login -u $DOCKER_USER -p $DOCKER_PASS
+                        echo "${DOCKER_PASS}" | docker login -u "${DOCKER_USER}" --password-stdin ${env.DOCKER_REGISTRY}
                         docker push ${env.DOCKER_IMAGE}:${env.DOCKER_TAG}
                         docker tag ${env.DOCKER_IMAGE}:${env.DOCKER_TAG} ${env.DOCKER_IMAGE}:latest
                         docker push ${env.DOCKER_IMAGE}:latest
@@ -136,6 +138,7 @@ pipeline {
                     echo "Container status:"
                     docker ps -a | grep ${env.CONTAINER_NAME}
                     echo "Health check:"
+                    sleep 10
                     curl -I http://localhost:${env.HOST_PORT}/health || true
                     """
                 }
@@ -153,10 +156,14 @@ pipeline {
             cleanWs()
         }
         success {
-            slackSend color: 'good', message: "SUCCESS: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]' (${env.BUILD_URL})"
+            mail to: 'elmbarkirabea@gmail.com',
+                 subject: "SUCCESS: Job '${env.JOB_NAME}' (${env.BUILD_NUMBER})",
+                 body: "Build successful\n\n${env.BUILD_URL}"
         }
         failure {
-            slackSend color: 'danger', message: "FAILED: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]' (${env.BUILD_URL})"
+            mail to: 'elmbarkirabea@gmail.com',
+                 subject: "FAILED: Job '${env.JOB_NAME}' (${env.BUILD_NUMBER})",
+                 body: "Build failed\n\n${env.BUILD_URL}"
         }
     }
 }
