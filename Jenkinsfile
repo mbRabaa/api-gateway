@@ -114,7 +114,7 @@ pipeline {
             }
         }
 
-        stage('Deploy to k3s') {
+        stage('Deploy to Kubernetes') {
             when {
                 expression { currentBuild.resultIsBetterOrEqualTo('UNSTABLE') }
             }
@@ -122,21 +122,23 @@ pipeline {
                 script {
                     withCredentials([string(credentialsId: 'k3s-jenkins-token', variable: 'K8S_TOKEN')]) {
                         sh """
-                        # Configurer l'accès kubectl
+                        # Configurer kubectl
                         kubectl config set-credentials jenkins --token=\${K8S_TOKEN}
                         kubectl config set-cluster k3s --server=https://\$(hostname -I | awk '{print \$1}'):6443 --insecure-skip-tls-verify
                         kubectl config set-context jenkins --cluster=k3s --user=jenkins --namespace=${env.K8S_NAMESPACE}
                         kubectl config use-context jenkins
                         
-                        # Mettre à jour l'image dans le deployment
-                        sed -i 's/\\\$\\{DOCKER_TAG\\}/${env.DOCKER_TAG}/g' k8s/deployment.yaml
+                        # Mise à jour de l'image dans le deployment
+                        kubectl set image deployment/api-gateway api-gateway=${env.DOCKER_IMAGE}:${env.DOCKER_TAG} -n ${env.K8S_NAMESPACE}
                         
-                        # Appliquer les configurations
-                        kubectl apply -f k8s/deployment.yaml
-                        kubectl apply -f k8s/service.yaml
+                        # Vérification du déploiement
+                        kubectl rollout status deployment/api-gateway -n ${env.K8S_NAMESPACE} --timeout=120s
                         
-                        # Vérifier le déploiement
-                        kubectl rollout status deployment/api-gateway --timeout=120s
+                        # Vérification des ressources
+                        echo "=== État du déploiement ==="
+                        kubectl get deployments -n ${env.K8S_NAMESPACE}
+                        echo "=== État des pods ==="
+                        kubectl get pods -n ${env.K8S_NAMESPACE}
                         """
                     }
                 }
@@ -157,21 +159,18 @@ pipeline {
                         
                         # Vérifier les ressources
                         echo "=== Pods ==="
-                        kubectl get pods -o wide
+                        kubectl get pods -o wide -n ${env.K8S_NAMESPACE}
                         
                         echo "=== Services ==="
-                        kubectl get svc
-                        
-                        echo "=== Déploiement ==="
-                        kubectl get deployment
+                        kubectl get svc -n ${env.K8S_NAMESPACE}
                         
                         # Test de santé
-                        NODE_IP=\$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
-                        NODE_PORT=\$(kubectl get svc api-gateway-service -o jsonpath='{.spec.ports[0].nodePort}')
-                        echo "URL du service: http://\${NODE_IP}:\${NODE_PORT}"
+                        SERVICE_URL=\$(kubectl get svc api-gateway-service -n ${env.K8S_NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}' || kubectl get svc api-gateway-service -n ${env.K8S_NAMESPACE} -o jsonpath='{.spec.clusterIP}')
+                        SERVICE_PORT=\$(kubectl get svc api-gateway-service -n ${env.K8S_NAMESPACE} -o jsonpath='{.spec.ports[0].port}')
+                        echo "URL du service: http://\${SERVICE_URL}:\${SERVICE_PORT}"
                         
                         echo "=== Test de santé ==="
-                        curl -v http://\${NODE_IP}:\${NODE_PORT}/health
+                        curl -v http://\${SERVICE_URL}:\${SERVICE_PORT}/health
                         
                         # Nettoyer
                         rm \${KUBECONFIG}
