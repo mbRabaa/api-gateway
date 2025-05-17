@@ -46,35 +46,31 @@ pipeline {
         }
 
         stage('Test') {
-    steps {
-        sh '''
-        echo "Exécution des tests..."
-        npm test || true
-        
-        # Fallback garantissant un fichier valide
-        if [ ! -f junit.xml ]; then
-            echo '<?xml version="1.0"?>
-            <testsuites>
-              <testsuite name="Jest Tests" tests="1" failures="0">
-                <testcase name="dummy_test" classname="dummy"/>
-              </testsuite>
-            </testsuites>' > junit.xml
-        fi
-        
-        # Vérification du fichier
-        echo "Contenu de junit.xml :"
-        cat junit.xml || true
-        echo "Fichiers dans le répertoire :"
-        ls -la
-        '''
-    }
-    post {
-        always {
-            junit 'junit.xml'
-            archiveArtifacts artifacts: 'coverage/**/*,junit.xml'
+            steps {
+                sh '''
+                echo "Exécution des tests..."
+                npm test || true
+                
+                # Fallback amélioré
+                if [ ! -f junit.xml ]; then
+                    echo '<?xml version="1.0"?>
+                    <testsuites>
+                      <testsuite name="Jest Tests" tests="1" failures="1">
+                        <testcase name="TestExecutionFailed" classname="Jest">
+                          <failure message="Erreur d\'exécution des tests - jest-junit non trouvé"/>
+                        </testcase>
+                      </testsuite>
+                    </testsuites>' > junit.xml
+                fi
+                '''
+            }
+            post {
+                always {
+                    junit 'junit.xml'
+                    archiveArtifacts artifacts: 'coverage/**/*,junit.xml'
+                }
+            }
         }
-    }
-}
 
         stage('Build Docker Image') {
             when {
@@ -82,7 +78,16 @@ pipeline {
             }
             steps {
                 script {
-                    docker.build("${env.DOCKER_IMAGE}:${env.DOCKER_TAG}")
+                    withCredentials([usernamePassword(
+                        credentialsId: 'docker-hub-creds',
+                        usernameVariable: 'DOCKER_USER',
+                        passwordVariable: 'DOCKER_PASS'
+                    )]) {
+                        sh """
+                        echo "${DOCKER_PASS}" | docker login -u "${DOCKER_USER}" --password-stdin
+                        docker build -t ${env.DOCKER_IMAGE}:${env.DOCKER_TAG} .
+                        """
+                    }
                 }
             }
         }
@@ -101,6 +106,8 @@ pipeline {
                         sh """
                         echo "${DOCKER_PASS}" | docker login -u "${DOCKER_USER}" --password-stdin
                         docker push ${env.DOCKER_IMAGE}:${env.DOCKER_TAG}
+                        docker tag ${env.DOCKER_IMAGE}:${env.DOCKER_TAG} ${env.DOCKER_IMAGE}:latest
+                        docker push ${env.DOCKER_IMAGE}:latest
                         """
                     }
                 }
@@ -130,12 +137,43 @@ pipeline {
                 }
             }
         }
+
+        stage('Health Check') {
+            steps {
+                script {
+                    sh """
+                    echo "Vérification du déploiement..."
+                    sleep 15  # Augmentation du délai pour les applications lourdes
+                    HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:${env.HOST_PORT}/health)
+                    if [ "\$HTTP_STATUS" -eq 200 ]; then
+                        echo "Health check réussi (Status: \$HTTP_STATUS)"
+                    else
+                        echo "Échec du health check (Status: \$HTTP_STATUS)"
+                        docker logs ${env.CONTAINER_NAME} --tail 50
+                        exit 1
+                    fi
+                    """
+                }
+            }
+        }
     }
 
     post {
         always {
             echo "Build status: ${currentBuild.currentResult}"
+            script {
+                def commitId = readFile('.git/commit-id').trim()
+                currentBuild.description = "Build #${env.BUILD_NUMBER} (${commitId.take(7)})"
+            }
             cleanWs()
+        }
+        failure {
+            slackSend color: 'danger', 
+                     message: "Échec du build ${env.JOB_NAME} #${env.BUILD_NUMBER} (${currentBuild.currentResult})"
+        }
+        success {
+            slackSend color: 'good', 
+                     message: "Succès du build ${env.JOB_NAME} #${env.BUILD_NUMBER}"
         }
     }
 }
