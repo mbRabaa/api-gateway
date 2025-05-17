@@ -4,7 +4,7 @@ module.exports = {
   collectCoverage: true,
   collectCoverageFrom: [
     'server.js',
-    '**/*.js',
+    '**/*.js', 
     '!**/node_modules/**',
     '!**/tests/**'
   ],
@@ -12,10 +12,10 @@ module.exports = {
   reporters: [
     'default',
     [
-      'jest-junit',
+      './node_modules/jest-junit',
       {
         outputDirectory: '.',
-        outputName: 'test-results.xml',
+        outputName: 'junit.xml',
         suiteName: 'Jest Tests',
         classNameTemplate: '{classname}',
         titleTemplate: '{title}',
