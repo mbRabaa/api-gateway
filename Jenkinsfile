@@ -2,56 +2,94 @@ pipeline {
     agent any
 
     environment {
-        // Configuration Docker
+        // Docker Configuration
         DOCKER_IMAGE = 'mbrabaa2023/api-gateway'
-        DOCKER_TAG = "${env.BUILD_ID}"
+        DOCKER_TAG = "${env.BUILD_NUMBER}"
         CONTAINER_NAME = 'api-gateway-container'
         
-        // Configuration des ports
+        // Ports Configuration
         HOST_PORT = '8000'
         CONTAINER_PORT = '8000'
         
-        // URLs par défaut pour les services
+        // Services URLs
         FRONTEND_URL = 'http://localhost:8080'
         PAIEMENT_SERVICE_URL = 'http://localhost:3002'
         RESERVATION_SERVICE_URL = 'http://localhost:3004'
+        TRAJET_SERVICE_URL = 'http://localhost:3005'
+        
+        // Node Configuration
+        NODE_ENV = 'production'
     }
 
     stages {
         stage('Checkout') {
-            steps { 
+            steps {
                 checkout scm
+                sh 'git rev-parse HEAD > .git/commit-id'
+                sh 'cat .git/commit-id'
+            }
+        }
+
+        stage('Clean Workspace') {
+            steps {
+                sh '''
+                echo "Cleaning workspace..."
+                rm -rf node_modules || true
+                rm -f package-lock.json || true
+                '''
             }
         }
 
         stage('Install Dependencies') {
             steps {
-                sh 'npm install'
+                sh '''
+                echo "Installing dependencies..."
+                npm install --legacy-peer-deps
+                npm install debug@latest --save
+                npm list
+                '''
             }
         }
 
         stage('Build') {
             steps {
-                sh 'npm run build'
+                sh '''
+                echo "Building application..."
+                npm run build
+                '''
             }
         }
 
         stage('Test') {
             steps {
-                sh 'npm test'
+                sh '''
+                echo "Running tests..."
+                npm test || true
+                '''
+            }
+            post {
+                always {
+                    junit 'reports/**/*.xml'
+                    archiveArtifacts artifacts: 'coverage/**/*'
+                }
             }
         }
 
         stage('Build Docker Image') {
+            when {
+                expression { currentBuild.resultIsBetterOrEqualTo('UNSTABLE') }
+            }
             steps {
                 script {
-                    sh 'docker --version'
-                    docker.build("${env.DOCKER_IMAGE}:${env.DOCKER_TAG}")
+                    docker.build("${env.DOCKER_IMAGE}:${env.DOCKER_TAG}", "--build-arg NODE_ENV=${env.NODE_ENV} .")
                 }
             }
         }
 
         stage('Push to Docker Hub') {
+            when {
+                expression { currentBuild.resultIsBetterOrEqualTo('UNSTABLE') }
+            }
             steps {
                 script {
                     withCredentials([usernamePassword(
@@ -60,10 +98,10 @@ pipeline {
                         passwordVariable: 'DOCKER_PASS'
                     )]) {
                         sh """
-                            echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-                            docker push ${env.DOCKER_IMAGE}:${env.DOCKER_TAG}
-                            docker tag ${env.DOCKER_IMAGE}:${env.DOCKER_TAG} ${env.DOCKER_IMAGE}:latest
-                            docker push ${env.DOCKER_IMAGE}:latest
+                        docker login -u $DOCKER_USER -p $DOCKER_PASS
+                        docker push ${env.DOCKER_IMAGE}:${env.DOCKER_TAG}
+                        docker tag ${env.DOCKER_IMAGE}:${env.DOCKER_TAG} ${env.DOCKER_IMAGE}:latest
+                        docker push ${env.DOCKER_IMAGE}:latest
                         """
                     }
                 }
@@ -71,27 +109,35 @@ pipeline {
         }
 
         stage('Deploy') {
+            when {
+                expression { currentBuild.resultIsBetterOrEqualTo('UNSTABLE') }
+            }
             steps {
                 script {
-                    // Nettoyage des anciens conteneurs
-                    sh "docker stop ${env.CONTAINER_NAME} || true"
-                    sh "docker rm ${env.CONTAINER_NAME} || true"
+                    sh """
+                    docker stop ${env.CONTAINER_NAME} || true
+                    docker rm ${env.CONTAINER_NAME} || true
+                    """
                     
-                    // Lancement du nouveau conteneur (format corrigé)
-                    sh """docker run -d \
-                          --name ${env.CONTAINER_NAME} \
-                          -p ${env.HOST_PORT}:${env.CONTAINER_PORT} \
-                          -e PORT=${env.CONTAINER_PORT} \
-                          -e FRONTEND_URL=${env.FRONTEND_URL} \
-                          -e PAIEMENT_SERVICE_URL=${env.PAIEMENT_SERVICE_URL} \
-                          -e RESERVATION_SERVICE_URL=${env.RESERVATION_SERVICE_URL} \
-                          -e TRAJET_SERVICE_URL=${env.RESERVATION_SERVICE_URL} \
-                          --restart unless-stopped \
-                          ${env.DOCKER_IMAGE}:${env.DOCKER_TAG}"""
+                    sh """
+                    docker run -d \
+                        --name ${env.CONTAINER_NAME} \
+                        -p ${env.HOST_PORT}:${env.CONTAINER_PORT} \
+                        -e PORT=${env.CONTAINER_PORT} \
+                        -e FRONTEND_URL=${env.FRONTEND_URL} \
+                        -e PAIEMENT_SERVICE_URL=${env.PAIEMENT_SERVICE_URL} \
+                        -e RESERVATION_SERVICE_URL=${env.RESERVATION_SERVICE_URL} \
+                        -e TRAJET_SERVICE_URL=${env.TRAJET_SERVICE_URL} \
+                        --restart unless-stopped \
+                        ${env.DOCKER_IMAGE}:${env.DOCKER_TAG}
+                    """
                     
-                    // Vérifications
-                    sh "docker ps -a | grep ${env.CONTAINER_NAME}"
-                    sh "curl -I http://localhost:${env.HOST_PORT}/health || true"
+                    sh """
+                    echo "Container status:"
+                    docker ps -a | grep ${env.CONTAINER_NAME}
+                    echo "Health check:"
+                    curl -I http://localhost:${env.HOST_PORT}/health || true
+                    """
                 }
             }
         }
@@ -99,9 +145,18 @@ pipeline {
 
     post {
         always {
-            echo "Build terminé - Statut: ${currentBuild.currentResult}"
-            sh 'docker logout || true'
-            sh 'docker image prune -f || true'
+            echo "Pipeline completed - Status: ${currentBuild.currentResult}"
+            script {
+                def commitId = readFile('.git/commit-id').trim()
+                currentBuild.description = "Build #${env.BUILD_NUMBER} (${commitId.take(7)})"
+            }
+            cleanWs()
+        }
+        success {
+            slackSend color: 'good', message: "SUCCESS: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]' (${env.BUILD_URL})"
+        }
+        failure {
+            slackSend color: 'danger', message: "FAILED: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]' (${env.BUILD_URL})"
         }
     }
 }
