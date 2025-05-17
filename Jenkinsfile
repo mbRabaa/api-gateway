@@ -53,18 +53,8 @@ pipeline {
             steps {
                 script {
                     try {
-                        // Solution alternative pour les tests
                         sh '''
-                        echo "Configuring Jest with JUnit reporter..."
-                        echo "module.exports = {
-                          reporters: [
-                            'default',
-                            ['jest-junit', { outputFile: 'junit.xml' }]
-                          ]
-                        };" > jest.config.ci.js
-                        
-                        echo "Running tests with custom config..."
-                        NODE_ENV=test jest --config=jest.config.ci.js --ci --coverage
+                        NODE_ENV=test jest --ci --coverage --reporters=default --reporters=jest-junit
                         '''
                     } catch (e) {
                         echo "Tests failed, creating fallback report"
@@ -140,11 +130,14 @@ pipeline {
                 script {
                     withCredentials([string(credentialsId: 'k3s-jenkins-token', variable: 'K8S_TOKEN')]) {
                         sh """
-                        kubectl config set-credentials jenkins --token=\${K8S_TOKEN}
+                        # Configurer kubectl pour Jenkins
+                        mkdir -p ~/.kube
                         kubectl config set-cluster k3s --server=https://\$(hostname -I | awk '{print \$1}'):6443 --insecure-skip-tls-verify
+                        kubectl config set-credentials jenkins --token=\${K8S_TOKEN}
                         kubectl config set-context jenkins --cluster=k3s --user=jenkins --namespace=${env.K8S_NAMESPACE}
                         kubectl config use-context jenkins
 
+                        # Mettre à jour et appliquer le déploiement
                         sed -i "s|image:.*|image: ${env.DOCKER_IMAGE}:${env.DOCKER_TAG}|g" k8s/deployment.yaml
                         kubectl apply -f k8s/deployment.yaml -n ${env.K8S_NAMESPACE}
                         kubectl rollout status deployment/api-gateway -n ${env.K8S_NAMESPACE} --timeout=180s
@@ -159,36 +152,62 @@ pipeline {
         always {
             echo "Build status: ${currentBuild.currentResult}"
             script {
-                def commitId = readFile('.git/commit-id').trim()
-                currentBuild.description = "Build #${env.BUILD_NUMBER} (${commitId.take(7)})"
+                try {
+                    def commitId = readFile('.git/commit-id').trim()
+                    currentBuild.description = "Build #${env.BUILD_NUMBER} (${commitId.take(7)})"
+                } catch (e) {
+                    echo "Could not read commit ID: ${e.message}"
+                    currentBuild.description = "Build #${env.BUILD_NUMBER}"
+                }
             }
             cleanWs()
         }
         failure {
-            emailext (
-                subject: "ÉCHEC du build ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                body: """
-                Détails de l'échec:
-                - URL du build: ${env.BUILD_URL}
-                - Commit: ${commitId.take(7)}
-                - Cause: ${currentBuild.currentResult}
-                """,
-                to: 'elmbarkirabea@gmail.com',
-                replyTo: 'elmbarkirabea@gmail.com',
-                attachLog: true
-            )
+            script {
+                try {
+                    def commitId = readFile('.git/commit-id').trim()
+                    emailext (
+                        subject: "ÉCHEC du build ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                        body: """
+                        Détails de l'échec:
+                        - URL du build: ${env.BUILD_URL}
+                        - Commit: ${commitId.take(7)}
+                        - Cause: ${currentBuild.currentResult}
+                        """,
+                        to: 'elmbarkirabea@gmail.com',
+                        replyTo: 'elmbarkirabea@gmail.com',
+                        attachLog: true
+                    )
+                } catch (e) {
+                    emailext (
+                        subject: "ÉCHEC du build ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                        body: """
+                        Détails de l'échec:
+                        - URL du build: ${env.BUILD_URL}
+                        - Cause: ${currentBuild.currentResult}
+                        """,
+                        to: 'elmbarkirabea@gmail.com',
+                        replyTo: 'elmbarkirabea@gmail.com',
+                        attachLog: true
+                    )
+                }
+            }
         }
         success {
-            emailext (
-                subject: "SUCCÈS du build ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                body: """
-                Détails du build réussi:
-                - Image Docker: ${env.DOCKER_IMAGE}:${env.DOCKER_TAG}
-                - Déployé dans: namespace ${env.K8S_NAMESPACE}
-                - URL du build: ${env.BUILD_URL}
-                """,
-                to: 'eelmbarkirabea@gmail.com'
-            )
+            script {
+                def commitId = readFile('.git/commit-id').trim()
+                emailext (
+                    subject: "SUCCÈS du build ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                    body: """
+                    Détails du build réussi:
+                    - Image Docker: ${env.DOCKER_IMAGE}:${env.DOCKER_TAG}
+                    - Déployé dans: namespace ${env.K8S_NAMESPACE}
+                    - URL du build: ${env.BUILD_URL}
+                    - Commit: ${commitId.take(7)}
+                    """,
+                    to: 'eelmbarkirabea@gmail.com'
+                )
+            }
         }
     }
 }
