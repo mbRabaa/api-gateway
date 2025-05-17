@@ -12,7 +12,7 @@ const port = process.env.PORT || 8000;
 
 // Middlewares
 app.use(helmet());
-app.use(morgan('dev'));
+app.use(morgan('dev'));  // Format de logs plus lisible
 app.use(cors({
   origin: process.env.FRONTEND_URL || 'http://localhost:8080',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
@@ -20,7 +20,7 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '10kb' }));
 app.use(rateLimit({
-  windowMs: 15 * 60 * 1000,
+  windowMs: 15 * 60 * 1000, // 15 minutes
   max: 1000,
   message: 'Too many requests from this IP, please try again later'
 }));
@@ -28,24 +28,32 @@ app.use(rateLimit({
 // Configuration des services
 const SERVICES = {
   paiements: process.env.PAIEMENT_SERVICE_URL || 'http://localhost:3002/api',
-  reservations: process.env.RESERVATION_SERVICE_URL || 'http://localhost:3004/api',
-  trajets: process.env.TRAJET_SERVICE_URL || 'http://localhost:3004/api'
+  reservations: process.env.RESERVATION_SERVICE_URL || 'http://localhost:3004',
+  trajets: process.env.RESERVATION_SERVICE_URL || 'http://localhost:3004' // Pointant vers reservations
 };
 
-// Middleware de traçage
+// Middleware de traçage amélioré
 app.use((req, res, next) => {
   req.requestId = uuidv4();
   console.log(`[${new Date().toISOString()}] [${req.requestId}] ${req.method} ${req.originalUrl} from ${req.ip}`);
   next();
 });
 
-// Proxy intelligent
+// Proxy intelligent avec gestion correcte des trajets
 const createServiceProxy = (serviceName) => async (req, res) => {
   try {
     const baseUrl = SERVICES[serviceName];
-    let targetPath = req.originalUrl.replace(`/api/${serviceName}`, '') || `/${serviceName}`;
-    
-    targetPath = targetPath.replace(/\/+/g, '/');
+    let targetPath;
+
+    // Gestion spéciale pour /api/trajets
+    if (serviceName === 'trajets') {
+      targetPath = req.originalUrl.replace('/api/trajets', '') || '/trajets';
+    } else {
+      targetPath = req.originalUrl.replace(`/api/${serviceName}`, '') || `/${serviceName}`;
+    }
+
+    // Nettoyage du path
+    targetPath = targetPath.replace(/\/+/g, '/');  // Supprime les doubles slashes
     if (targetPath.endsWith('/')) targetPath = targetPath.slice(0, -1);
 
     const url = `${baseUrl}${targetPath}`;
@@ -60,18 +68,15 @@ const createServiceProxy = (serviceName) => async (req, res) => {
         ...(req.headers.authorization && { Authorization: req.headers.authorization })
       },
       data: req.body,
-      timeout: 15000
+      timeout: 15000 // 15s timeout
     };
 
     const response = await axios(config);
     res.status(response.status).json(response.data);
   } catch (error) {
     const errorCode = error.response?.status || 500;
-    const errorMessage = error.response?.data?.error || 
-                        error.response?.data?.message || 
-                        error.message || 
-                        'Internal Server Error';
-
+    const errorMessage = error.response?.data?.message || error.message;
+    
     console.error(`[GATEWAY ERROR] ${serviceName}:`, {
       status: errorCode,
       message: errorMessage,
@@ -92,7 +97,7 @@ const createServiceProxy = (serviceName) => async (req, res) => {
 };
 
 // Routes API
-app.all('/api/paiements*', createServiceProxy('paiements'));
+app.all(['/api/paiements*', '/paiements*'], createServiceProxy('paiements'));
 app.all('/api/reservations*', createServiceProxy('reservations'));
 app.all('/api/trajets*', createServiceProxy('trajets'));
 
@@ -114,7 +119,7 @@ app.get('/services', (req, res) => {
   });
 });
 
-// Gestion des erreurs 404
+// Gestion des erreurs 404 améliorée
 app.use((req, res) => {
   res.status(404).json({
     error: 'Endpoint not found',
@@ -123,9 +128,11 @@ app.use((req, res) => {
       '/api/trajets',
       '/api/reservations',
       '/api/paiements',
+      '/api/feedbacks',
       '/health',
       '/services'
-    ]
+    ],
+    documentation: process.env.API_DOCS_URL || 'https://example.com/api-docs'
   });
 });
 
@@ -139,24 +146,19 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Démarrage conditionnel du serveur
-if (process.env.NODE_ENV !== 'test') {
-  app.listen(port, () => {
-    console.log(`\n🚀 API Gateway démarré sur http://localhost:${port}`);
-    console.log('🔌 Microservices connectés:');
-    
-    const servicesTable = Object.entries(SERVICES).map(([name, url]) => ({ 
+// Démarrage du serveur
+app.listen(port, () => {
+  console.log(`\n🚀 API Gateway démarré sur http://localhost:${port}`);
+  console.log('🔌 Microservices connectés:');
+  console.table(
+    Object.entries(SERVICES).map(([name, url]) => ({ 
       Service: name, 
       URL: url,
       Status: 'Connected'
-    }));
-    console.table(servicesTable);
-    
-    console.log('\n📊 Endpoints utilitaires:');
-    console.log('- /health\t\tHealth check');
-    console.log('- /services\t\tListe des services');
-    console.log('\n🛠️ Mode:', process.env.NODE_ENV || 'development');
-  });
-}
-
-module.exports = app;
+    })
+  ));
+  console.log('\n📊 Endpoints utilitaires:');
+  console.log('- /health\t\tHealth check');
+  console.log('- /services\t\tListe des services');
+  console.log('\n🛠️ Mode:', process.env.NODE_ENV || 'development');
+});
