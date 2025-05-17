@@ -47,12 +47,9 @@ pipeline {
                 script {
                     try {
                         sh '''
-                        # Solution pour le conflit de configuration Jest
-                        if [ -f jest.config.js ]; then
-                            mv jest.config.js jest.config.js.backup
-                        fi
-                        
-                        NODE_ENV=test jest --ci --coverage --reporters=default --reporters=jest-junit
+                        # Solution pour les tests Express
+                        export NODE_ENV=test
+                        jest --ci --coverage --reporters=default --reporters=jest-junit
                         '''
                     } catch (e) {
                         echo "Tests failed, creating fallback report"
@@ -128,33 +125,31 @@ pipeline {
                 script {
                     withCredentials([string(credentialsId: 'k3s-jenkins-token', variable: 'K8S_TOKEN')]) {
                         sh """
-                        # Création d'un kubeconfig temporaire
+                        # Configuration sécurisée de kubectl
                         mkdir -p ${WORKSPACE}/.kube
                         cat > ${WORKSPACE}/.kube/config <<EOF
                         apiVersion: v1
                         kind: Config
-                        clusters:
-                        - cluster:
-                            server: https://\$(hostname -I | awk '{print \$1}'):6443
-                            insecure-skip-tls-verify: true
-                          name: k3s
+                        current-context: jenkins
                         contexts:
                         - context:
                             cluster: k3s
                             user: jenkins
                             namespace: ${env.K8S_NAMESPACE}
                           name: jenkins
-                        current-context: jenkins
+                        clusters:
+                        - cluster:
+                            server: https://\$(hostname -I | awk '{print \$1}'):6443
+                            insecure-skip-tls-verify: true
+                          name: k3s
                         users:
                         - name: jenkins
                           user:
-                            token: ${K8S_TOKEN}
+                            token: '${K8S_TOKEN}'
                         EOF
 
-                        # Mise à jour de l'image dans le fichier deployment.yaml existant
+                        # Application du déploiement
                         sed -i "s|image:.*|image: ${env.DOCKER_IMAGE}:${env.DOCKER_TAG}|g" k8s/deployment.yaml
-                        
-                        # Déploiement avec le kubeconfig spécifique
                         kubectl --kubeconfig=${WORKSPACE}/.kube/config apply -f k8s/deployment.yaml
                         kubectl --kubeconfig=${WORKSPACE}/.kube/config rollout status deployment/api-gateway -n ${env.K8S_NAMESPACE} --timeout=180s
                         """
