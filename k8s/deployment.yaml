@@ -79,9 +79,3 @@ spec:
           periodSeconds: 5
           failureThreshold: 3
           timeoutSeconds: 3
-
-      # Volumes montés (configuration supplémentaire)
-      volumes:
-      - name: config-volume
-        configMap:
-          name: api-gateway-config  # Référence à une ConfigMap existante
