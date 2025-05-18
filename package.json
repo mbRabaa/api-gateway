@@ -1,20 +1,72 @@
 {
   "name": "api-gateway",
   "version": "1.0.0",
+  "description": "API Gateway pour l'application TunisBus",
   "main": "server.js",
   "scripts": {
-    "pretest": "rm -f junit.xml",
-    "test": "NODE_ENV=test jest --config=jest.config.js --coverage",
-    "test:ci": "NODE_ENV=test jest --config=jest.config.js --ci --coverage",
+    "pretest": "rm -f junit.xml && mkdir -p reports",
+    "test": "NODE_ENV=test jest --config=jest.config.js --coverage --forceExit --detectOpenHandles",
+    "test:ci": "NODE_ENV=test jest --config=jest.config.js --ci --coverage --forceExit --detectOpenHandles",
+    "test:watch": "NODE_ENV=test jest --watch --detectOpenHandles",
+    "test:integration": "NODE_ENV=test jest apiGateway.integration.test.js --forceExit --detectOpenHandles",
     "start": "node server.js",
-    "build": "echo 'Build step completed'"
+    "dev": "nodemon server.js",
+    "build": "echo 'Build step completed'",
+    "prepare": "echo 'Skip prepare'",
+    "clean": "echo 'Skip clean'",
+    "compile": "echo 'Skip compile'"
   },
   "dependencies": {
-    "express": "^4.21.2"
+    "axios": "^1.6.8",
+    "cors": "^2.8.5",
+    "dotenv": "^16.5.0",
+    "express": "^4.21.2",
+    "express-rate-limit": "^7.5.0",
+    "helmet": "^8.1.0",
+    "morgan": "^1.10.0",
+    "uuid": "^11.1.0",
+    "debug": "^4.3.4"
   },
   "devDependencies": {
     "jest": "^29.7.0",
     "jest-junit": "^16.0.0",
-    "@babel/preset-env": "^7.23.2"
+    "nodemon": "^3.1.0",
+    "supertest": "^7.1.1"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "coverageDirectory": "./coverage",
+    "collectCoverage": true,
+    "collectCoverageFrom": [
+      "server.js",
+      "**/*.js",
+      "!**/node_modules/**",
+      "!**/tests/**"
+    ],
+    "coverageReporters": [
+      "text",
+      "lcov",
+      "text-summary"
+    ],
+    "reporters": [
+      "default",
+      [
+        "jest-junit",
+        {
+          "outputDirectory": ".",
+          "outputName": "test-results.xml",
+          "suiteName": "Jest Tests",
+          "classNameTemplate": "{classname}",
+          "titleTemplate": "{title}",
+          "ancestorSeparator": " > ",
+          "usePathForSuiteName": "false"
+        }
+      ]
+    ]
+  },
+  "babel": {
+    "presets": [
+      "@babel/preset-env"
+    ]
   }
 }

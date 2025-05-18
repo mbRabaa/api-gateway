@@ -1,14 +1,14 @@
 module.exports = {
-  preset: '@babel/preset-env',
   testEnvironment: 'node',
   coverageDirectory: './coverage',
   collectCoverage: true,
   collectCoverageFrom: [
     'server.js',
-    '**/*.js',
-    '!**/node_modules/**'
+    '**/*.js', 
+    '!**/node_modules/**',
+    '!**/tests/**'
   ],
-  coverageReporters: ['text', 'lcov', 'cobertura'],
+  coverageReporters: ['text', 'lcov', 'text-summary'],
   reporters: [
     'default',
     [
@@ -16,8 +16,12 @@ module.exports = {
       {
         outputDirectory: '.',
         outputName: 'junit.xml',
-        includeConsoleOutput: true
+        suiteName: 'Jest Tests',
+        classNameTemplate: '{classname}',
+        titleTemplate: '{title}',
+        ancestorSeparator: ' > ',
+        usePathForSuiteName: 'false'
       }
     ]
   ]
-}
+};
