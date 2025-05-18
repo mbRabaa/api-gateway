@@ -10,7 +10,7 @@ pipeline {
         FRONTEND_URL = 'http://frontend-service.frontend:8080'
         PAIEMENT_SERVICE_URL = 'http://paiement-service.frontend:3002'
         RESERVATION_SERVICE_URL = 'http://reservation-service.frontend:3004'
-        TRAJET_SERVICE_URL = 'http://trajet-service.frontend:3005'
+        TRAJET_SERVICE_URL = 'http://trajet-service.frontend:3004'
         NODE_ENV = 'production'
         KUBE_NAMESPACE = 'frontend'
     }
@@ -26,7 +26,7 @@ pipeline {
         stage('Clean Workspace') {
             steps {
                 sh '''
-                rm -rf node_modules package-lock.json
+                rm -rf node_modules
                 '''
             }
         }
@@ -35,7 +35,7 @@ pipeline {
             steps {
                 sh '''
                 npm install --legacy-peer-deps
-                npm install jest-junit@latest --save-dev
+                npm install jest-junit --save-dev
                 '''
             }
         }
@@ -52,7 +52,6 @@ pipeline {
                 echo "Exécution des tests..."
                 npm test || true
                 
-                # Fallback garantissant un fichier valide
                 if [ ! -f junit.xml ]; then
                     echo '<?xml version="1.0"?>
                     <testsuites>
@@ -62,11 +61,8 @@ pipeline {
                     </testsuites>' > junit.xml
                 fi
                 
-                # Vérification du fichier
                 echo "Contenu de junit.xml :"
                 cat junit.xml || true
-                echo "Fichiers dans le répertoire :"
-                ls -la
                 '''
             }
             post {
@@ -114,31 +110,27 @@ pipeline {
             }
             steps {
                 withCredentials([file(credentialsId: 'k3s-jenkins-config', variable: 'KUBECONFIG')]) {
-                    sh '''
-                    export KUBECONFIG=${KUBECONFIG}
-                    
-                    # Met à jour l'image Docker dans le fichier deployment.yaml
-                    sed -i 's/\\${DOCKER_TAG}/${env.DOCKER_TAG}/g' k8s/deployment.yaml
-                    
-                    # Applique la configuration Kubernetes
-                    kubectl apply -f k8s/
-                    
-                    # Vérifie le déploiement
-                    kubectl rollout status deployment/api-gateway -n ${env.KUBE_NAMESPACE} --timeout=120s
-                    
-                    # Affiche les informations de déploiement
-                    echo "\\n=== Deployment Status ==="
-                    kubectl get deployments -n ${env.KUBE_NAMESPACE} -o wide
-                    
-                    echo "\\n=== Pods Status ==="
-                    kubectl get pods -n ${env.KUBE_NAMESPACE} -l app=api-gateway
-                    
-                    echo "\\n=== Service Info ==="
-                    kubectl get svc api-gateway-service -n ${env.KUBE_NAMESPACE}
-                    
-                    echo "\\n=== HPA Status ==="
-                    kubectl get hpa api-gateway-hpa -n ${env.KUBE_NAMESPACE}
-                    '''
+                    script {
+                        // Sauvegarde du fichier original
+                        sh 'cp k8s/deployment.yaml k8s/deployment.yaml.bak'
+                        
+                        sh """
+                        export KUBECONFIG=${KUBECONFIG}
+                        sed -i "s|image:.*|image: ${env.DOCKER_IMAGE}:${env.DOCKER_TAG}|g" k8s/deployment.yaml
+                        
+                        kubectl apply -f k8s/ -n ${env.KUBE_NAMESPACE}
+                        kubectl rollout status deployment/api-gateway -n ${env.KUBE_NAMESPACE} --timeout=120s
+                        
+                        echo "\\n=== Deployment Status ==="
+                        kubectl get deployments -n ${env.KUBE_NAMESPACE} -o wide
+                        
+                        echo "\\n=== Pods Status ==="
+                        kubectl get pods -n ${env.KUBE_NAMESPACE} -l app=api-gateway
+                        
+                        echo "\\n=== Service Info ==="
+                        kubectl get svc api-gateway-service -n ${env.KUBE_NAMESPACE}
+                        """
+                    }
                 }
             }
         }
@@ -147,7 +139,10 @@ pipeline {
     post {
         always {
             echo "Build status: ${currentBuild.currentResult}"
-            cleanWs()
+            script {
+                // Nettoyage final
+                cleanWs()
+            }
         }
     }
 }
