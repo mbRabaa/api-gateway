@@ -113,36 +113,32 @@ pipeline {
                 expression { currentBuild.resultIsBetterOrEqualTo('UNSTABLE') }
             }
             steps {
-                script {
-                    withCredentials([string(credentialsId: 'k3s-jenkins-token', variable: 'K8S_TOKEN')]) {
-                        sh """
-                        # Configure kubectl
-                        kubectl config set-credentials jenkins --token=${K8S_TOKEN}
-                        kubectl config set-cluster k3s --server=https://10.0.2.15:6443 --insecure-skip-tls-verify
-                        kubectl config set-context jenkins --cluster=k3s --user=jenkins --namespace=${env.KUBE_NAMESPACE}
-                        kubectl config use-context jenkins
-                        
-                        # Apply configurations
-                        sed -i 's/\\${DOCKER_TAG}/${env.DOCKER_TAG}/g' k8s/deployment.yaml
-                        kubectl apply -f k8s/
-                        
-                        # Verify deployment
-                        kubectl rollout status deployment/api-gateway -n ${env.KUBE_NAMESPACE} --timeout=120s
-                        
-                        # Print deployment info
-                        echo "\\n=== Deployment Status ==="
-                        kubectl get deployments -n ${env.KUBE_NAMESPACE} -o wide
-                        
-                        echo "\\n=== Pods Status ==="
-                        kubectl get pods -n ${env.KUBE_NAMESPACE} -l app=api-gateway
-                        
-                        echo "\\n=== Service Info ==="
-                        kubectl get svc api-gateway-service -n ${env.KUBE_NAMESPACE}
-                        
-                        echo "\\n=== HPA Status ==="
-                        kubectl get hpa api-gateway-hpa -n ${env.KUBE_NAMESPACE}
-                        """
-                    }
+                withCredentials([file(credentialsId: 'k3s-jenkins-config', variable: 'KUBECONFIG')]) {
+                    sh '''
+                    export KUBECONFIG=${KUBECONFIG}
+                    
+                    # Met à jour l'image Docker dans le fichier deployment.yaml
+                    sed -i 's/\\${DOCKER_TAG}/${env.DOCKER_TAG}/g' k8s/deployment.yaml
+                    
+                    # Applique la configuration Kubernetes
+                    kubectl apply -f k8s/
+                    
+                    # Vérifie le déploiement
+                    kubectl rollout status deployment/api-gateway -n ${env.KUBE_NAMESPACE} --timeout=120s
+                    
+                    # Affiche les informations de déploiement
+                    echo "\\n=== Deployment Status ==="
+                    kubectl get deployments -n ${env.KUBE_NAMESPACE} -o wide
+                    
+                    echo "\\n=== Pods Status ==="
+                    kubectl get pods -n ${env.KUBE_NAMESPACE} -l app=api-gateway
+                    
+                    echo "\\n=== Service Info ==="
+                    kubectl get svc api-gateway-service -n ${env.KUBE_NAMESPACE}
+                    
+                    echo "\\n=== HPA Status ==="
+                    kubectl get hpa api-gateway-hpa -n ${env.KUBE_NAMESPACE}
+                    '''
                 }
             }
         }
