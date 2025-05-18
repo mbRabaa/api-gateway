@@ -32,7 +32,7 @@ spec:
         - name: RESERVATION_SERVICE_URL
           value: "http://reservation-service:3004"
         - name: TRAJET_SERVICE_URL
-          value: "http://trajet-service:3005"
+          value: "http://trajet-service:3004"
         resources:
           requests:
             cpu: "100m"
