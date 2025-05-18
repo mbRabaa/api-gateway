@@ -32,8 +32,6 @@ pipeline {
                 sh '''
                 npm install --legacy-peer-deps
                 npm install jest-junit jest --save-dev
-                # Correction pour Express
-                npm install express-path-regex --save-dev
                 '''
             }
         }
@@ -49,10 +47,14 @@ pipeline {
                 script {
                     try {
                         sh '''
-                        # Solution pour les tests Express
-                        export NODE_ENV=test
-                        # Désactiver les tests qui échouent temporairement
-                        jest --config=jest.config.js --ci --coverage --reporters=default --reporters=jest-junit || true
+                        # Solution définitive pour les conflits de configuration Jest
+                        if [ -f jest.config.js ]; then
+                            echo "Utilisation de jest.config.js existant"
+                            NODE_ENV=test jest --config=jest.config.js --ci --coverage --reporters=default --reporters=jest-junit
+                        else
+                            echo "Utilisation de la configuration par défaut"
+                            NODE_ENV=test jest --ci --coverage --reporters=default --reporters=jest-junit
+                        fi
                         '''
                     } catch (e) {
                         echo "Tests failed, creating fallback report"
@@ -127,35 +129,35 @@ pipeline {
             steps {
                 script {
                     withCredentials([string(credentialsId: 'k3s-jenkins-token', variable: 'K8S_TOKEN')]) {
-                        // Solution sécurisée avec heredoc
-                        sh """
-                        mkdir -p \$WORKSPACE/.kube
-                        cat <<EOF > \$WORKSPACE/.kube/config
-apiVersion: v1
-kind: Config
-current-context: jenkins
-contexts:
-- context:
-    cluster: k3s
-    user: jenkins
-    namespace: ${env.K8S_NAMESPACE}
-  name: jenkins
-clusters:
-- cluster:
-    server: https://\$(hostname -I | awk '{print \$1}'):6443
-    insecure-skip-tls-verify: true
-  name: k3s
-users:
-- name: jenkins
-  user:
-    token: '${K8S_TOKEN}'
-EOF
+                        // Solution sécurisée sans interpolation Groovy
+                        sh '''
+                        mkdir -p $WORKSPACE/.kube
+                        cat > $WORKSPACE/.kube/config <<EOF
+                        apiVersion: v1
+                        kind: Config
+                        current-context: jenkins
+                        contexts:
+                        - context:
+                            cluster: k3s
+                            user: jenkins
+                            namespace: ''' + env.K8S_NAMESPACE + '''
+                          name: jenkins
+                        clusters:
+                        - cluster:
+                            server: https://$(hostname -I | awk '{print $1}'):6443
+                            insecure-skip-tls-verify: true
+                          name: k3s
+                        users:
+                        - name: jenkins
+                          user:
+                            token: ''' + K8S_TOKEN + '''
+                        EOF
 
-                        # Application du déploiement
-                        sed -i "s|image:.*|image: ${env.DOCKER_IMAGE}:${env.DOCKER_TAG}|g" k8s/deployment.yaml
-                        kubectl --kubeconfig=\$WORKSPACE/.kube/config apply -f k8s/deployment.yaml
-                        kubectl --kubeconfig=\$WORKSPACE/.kube/config rollout status deployment/api-gateway -n ${env.K8S_NAMESPACE} --timeout=180s
-                        """
+                        # Mise à jour et application du déploiement
+                        sed -i "s|image:.*|image: ''' + env.DOCKER_IMAGE + ''':''' + env.DOCKER_TAG + '''|g" k8s/deployment.yaml
+                        kubectl --kubeconfig=$WORKSPACE/.kube/config apply -f k8s/deployment.yaml
+                        kubectl --kubeconfig=$WORKSPACE/.kube/config rollout status deployment/api-gateway -n ''' + env.K8S_NAMESPACE + ''' --timeout=180s
+                        '''
                     }
                 }
             }
@@ -175,6 +177,43 @@ EOF
                 }
             }
             cleanWs()
+        }
+        failure {
+            script {
+                try {
+                    def commitId = readFile('.git/commit-id').trim()
+                    mail to: 'elmbarkirabea@gmail.com',
+                         subject: "ÉCHEC du build ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                         body: """
+                         Détails de l'échec:
+                         - URL du build: ${env.BUILD_URL}
+                         - Commit: ${commitId.take(7)}
+                         - Cause: ${currentBuild.currentResult}
+                         """
+                } catch (e) {
+                    mail to: 'elmbarkirabea@gmail.com',
+                         subject: "ÉCHEC du build ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                         body: """
+                         Détails de l'échec:
+                         - URL du build: ${env.BUILD_URL}
+                         - Cause: ${currentBuild.currentResult}
+                         """
+                }
+            }
+        }
+        success {
+            script {
+                def commitId = readFile('.git/commit-id').trim()
+                mail to: 'eelmbarkirabea@gmail.com',
+                     subject: "SUCCÈS du build ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                     body: """
+                     Détails du build réussi:
+                     - Image Docker: ${env.DOCKER_IMAGE}:${env.DOCKER_TAG}
+                     - Déployé dans: namespace ${env.K8S_NAMESPACE}
+                     - URL du build: ${env.BUILD_URL}
+                     - Commit: ${commitId.take(7)}
+                     """
+            }
         }
     }
 }
