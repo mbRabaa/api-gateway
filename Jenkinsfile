@@ -24,9 +24,7 @@ pipeline {
 
         stage('Clean Workspace') {
             steps {
-                sh '''
-                rm -rf node_modules package-lock.json
-                '''
+                sh 'rm -rf node_modules package-lock.json'
             }
         }
 
@@ -34,7 +32,7 @@ pipeline {
             steps {
                 sh '''
                 npm install --legacy-peer-deps
-                npm install jest-junit@latest --save-dev
+                npm install jest-junit@16.0.0 --save-dev
                 '''
             }
         }
@@ -49,13 +47,18 @@ pipeline {
             steps {
                 sh '''
                 npm ci
-                npm run test:ci
+                NODE_ENV=test jest --ci --coverage --reporters=default --reporters=jest-junit
                 '''
             }
             post {
                 always {
                     junit 'junit.xml'
                     archiveArtifacts artifacts: 'coverage/**/*,junit.xml'
+                    publishHTML(target: [
+                        reportDir: 'coverage/lcov-report',
+                        reportFiles: 'index.html',
+                        reportName: 'Coverage Report'
+                    ])
                 }
             }
         }
@@ -83,7 +86,7 @@ pipeline {
                         passwordVariable: 'DOCKER_PASS'
                     )]) {
                         sh """
-                        echo "${DOCKER_PASS}" | docker login -u "${DOCKER_USER}" --password-stdin
+                        docker login -u "${DOCKER_USER}" -p "${DOCKER_PASS}"
                         docker push ${env.DOCKER_IMAGE}:${env.DOCKER_TAG}
                         """
                     }
@@ -100,15 +103,15 @@ pipeline {
                     sh """
                     docker stop ${env.CONTAINER_NAME} || true
                     docker rm ${env.CONTAINER_NAME} || true
-                    docker run -d \\
-                        --name ${env.CONTAINER_NAME} \\
-                        -p ${env.HOST_PORT}:${env.CONTAINER_PORT} \\
-                        -e PORT=${env.CONTAINER_PORT} \\
-                        -e FRONTEND_URL=${env.FRONTEND_URL} \\
-                        -e PAIEMENT_SERVICE_URL=${env.PAIEMENT_SERVICE_URL} \\
-                        -e RESERVATION_SERVICE_URL=${env.RESERVATION_SERVICE_URL} \\
-                        -e TRAJET_SERVICE_URL=${env.TRAJET_SERVICE_URL} \\
-                        --restart unless-stopped \\
+                    docker run -d \
+                        --name ${env.CONTAINER_NAME} \
+                        -p ${env.HOST_PORT}:${env.CONTAINER_PORT} \
+                        -e PORT=${env.CONTAINER_PORT} \
+                        -e FRONTEND_URL=${env.FRONTEND_URL} \
+                        -e PAIEMENT_SERVICE_URL=${env.PAIEMENT_SERVICE_URL} \
+                        -e RESERVATION_SERVICE_URL=${env.RESERVATION_SERVICE_URL} \
+                        -e TRAJET_SERVICE_URL=${env.TRAJET_SERVICE_URL} \
+                        --restart unless-stopped \
                         ${env.DOCKER_IMAGE}:${env.DOCKER_TAG}
                     """
                 }

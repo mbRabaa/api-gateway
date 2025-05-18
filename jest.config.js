@@ -8,22 +8,19 @@ module.exports = {
     '!**/node_modules/**',
     '!**/tests/**'
   ],
-  coverageReporters: ['text', 'lcov', 'text-summary', 'cobertura'],
+  coverageReporters: ['text', 'lcov', 'cobertura'],
   reporters: [
     'default',
     [
-      'jest-junit',
+      './node_modules/jest-junit',
       {
         outputDirectory: '.',
         outputName: 'junit.xml',
         suiteName: 'Jest Tests',
-        classNameTemplate: '{classname}-{title}',
-        titleTemplate: '{title}',
-        ancestorSeparator: ' > ',
         includeConsoleOutput: true,
         outputFile: 'junit.xml'
       }
     ]
   ],
   testResultsProcessor: 'jest-junit'
-};
+}
