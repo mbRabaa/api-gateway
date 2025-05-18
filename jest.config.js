@@ -4,24 +4,26 @@ module.exports = {
   collectCoverage: true,
   collectCoverageFrom: [
     'server.js',
-    '**/*.js', 
+    '**/*.js',
     '!**/node_modules/**',
     '!**/tests/**'
   ],
-  coverageReporters: ['text', 'lcov', 'text-summary'],
+  coverageReporters: ['text', 'lcov', 'text-summary', 'cobertura'],
   reporters: [
     'default',
     [
-      './node_modules/jest-junit',
+      'jest-junit',
       {
         outputDirectory: '.',
         outputName: 'junit.xml',
         suiteName: 'Jest Tests',
-        classNameTemplate: '{classname}',
+        classNameTemplate: '{classname}-{title}',
         titleTemplate: '{title}',
         ancestorSeparator: ' > ',
-        usePathForSuiteName: 'false'
+        includeConsoleOutput: true,
+        outputFile: 'junit.xml'
       }
     ]
-  ]
+  ],
+  testResultsProcessor: 'jest-junit'
 };

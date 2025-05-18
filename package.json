@@ -6,7 +6,7 @@
   "scripts": {
     "pretest": "rm -f junit.xml && mkdir -p reports",
     "test": "NODE_ENV=test jest --config=jest.config.js --coverage --forceExit --detectOpenHandles",
-    "test:ci": "NODE_ENV=test jest --config=jest.config.js --ci --coverage --forceExit --detectOpenHandles",
+    "test:ci": "NODE_ENV=test jest --config=jest.config.js --ci --coverage --forceExit --detectOpenHandles --reporters=default --reporters=jest-junit",
     "test:watch": "NODE_ENV=test jest --watch --detectOpenHandles",
     "test:integration": "NODE_ENV=test jest apiGateway.integration.test.js --forceExit --detectOpenHandles",
     "start": "node server.js",
@@ -31,42 +31,11 @@
     "jest": "^29.7.0",
     "jest-junit": "^16.0.0",
     "nodemon": "^3.1.0",
-    "supertest": "^7.1.1"
+    "supertest": "^7.1.1",
+    "@babel/preset-env": "^7.23.2"
   },
   "jest": {
-    "testEnvironment": "node",
-    "coverageDirectory": "./coverage",
-    "collectCoverage": true,
-    "collectCoverageFrom": [
-      "server.js",
-      "**/*.js",
-      "!**/node_modules/**",
-      "!**/tests/**"
-    ],
-    "coverageReporters": [
-      "text",
-      "lcov",
-      "text-summary"
-    ],
-    "reporters": [
-      "default",
-      [
-        "jest-junit",
-        {
-          "outputDirectory": ".",
-          "outputName": "test-results.xml",
-          "suiteName": "Jest Tests",
-          "classNameTemplate": "{classname}",
-          "titleTemplate": "{title}",
-          "ancestorSeparator": " > ",
-          "usePathForSuiteName": "false"
-        }
-      ]
-    ]
-  },
-  "babel": {
-    "presets": [
-      "@babel/preset-env"
-    ]
+    "preset": "@babel/preset-env",
+    "testResultsProcessor": "jest-junit"
   }
 }
