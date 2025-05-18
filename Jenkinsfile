@@ -47,18 +47,13 @@ pipeline {
             steps {
                 sh '''
                 npm ci
-                NODE_ENV=test jest --ci --coverage --reporters=default --reporters=jest-junit
+                NODE_ENV=test jest --config=jest.config.js --ci --coverage --reporters=default --reporters=jest-junit
                 '''
             }
             post {
                 always {
                     junit 'junit.xml'
                     archiveArtifacts artifacts: 'coverage/**/*,junit.xml'
-                    publishHTML(target: [
-                        reportDir: 'coverage/lcov-report',
-                        reportFiles: 'index.html',
-                        reportName: 'Coverage Report'
-                    ])
                 }
             }
         }
@@ -103,15 +98,15 @@ pipeline {
                     sh """
                     docker stop ${env.CONTAINER_NAME} || true
                     docker rm ${env.CONTAINER_NAME} || true
-                    docker run -d \
-                        --name ${env.CONTAINER_NAME} \
-                        -p ${env.HOST_PORT}:${env.CONTAINER_PORT} \
-                        -e PORT=${env.CONTAINER_PORT} \
-                        -e FRONTEND_URL=${env.FRONTEND_URL} \
-                        -e PAIEMENT_SERVICE_URL=${env.PAIEMENT_SERVICE_URL} \
-                        -e RESERVATION_SERVICE_URL=${env.RESERVATION_SERVICE_URL} \
-                        -e TRAJET_SERVICE_URL=${env.TRAJET_SERVICE_URL} \
-                        --restart unless-stopped \
+                    docker run -d \\
+                        --name ${env.CONTAINER_NAME} \\
+                        -p ${env.HOST_PORT}:${env.CONTAINER_PORT} \\
+                        -e PORT=${env.CONTAINER_PORT} \\
+                        -e FRONTEND_URL=${env.FRONTEND_URL} \\
+                        -e PAIEMENT_SERVICE_URL=${env.PAIEMENT_SERVICE_URL} \\
+                        -e RESERVATION_SERVICE_URL=${env.RESERVATION_SERVICE_URL} \\
+                        -e TRAJET_SERVICE_URL=${env.TRAJET_SERVICE_URL} \\
+                        --restart unless-stopped \\
                         ${env.DOCKER_IMAGE}:${env.DOCKER_TAG}
                     """
                 }
