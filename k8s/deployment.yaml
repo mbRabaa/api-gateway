@@ -1,54 +1,87 @@
+# Déclaration de la version de l'API Kubernetes
 apiVersion: apps/v1
+# Type de ressource à créer (un Deployment)
 kind: Deployment
+# Métadonnées du déploiement
 metadata:
-  name: api-gateway
-  namespace: frontend
+  name: api-gateway               # Nom du déploiement
+  namespace: frontend             # Namespace de déploiement
+
+# Spécifications du déploiement
 spec:
-  replicas: 3
+  replicas: 3  # Nombre de copies (pods) à maintenir
+  
+  # Stratégie de mise à jour
   strategy:
+    type: RollingUpdate           # Mise à jour progressive sans interruption
     rollingUpdate:
-      maxSurge: 1
-      maxUnavailable: 0
+      maxSurge: 1                 # 1 pod supplémentaire autorisé pendant la mise à jour
+      maxUnavailable: 0           # Aucun pod indisponible toléré pendant la mise à jour
+
+  # Sélecteur pour identifier les pods gérés par ce déploiement
   selector:
     matchLabels:
-      app: api-gateway
+      app: api-gateway            # Doit correspondre aux labels du template
+
+  # Template de configuration des pods
   template:
     metadata:
       labels:
-        app: api-gateway
+        app: api-gateway          # Label utilisé par le sélecteur
     spec:
       containers:
       - name: api-gateway
+        # Image Docker avec tag injecté par le pipeline CI/CD
         image: mbrabaa2023/api-gateway:${DOCKER_TAG}
+        
+        # Ports exposés par le container
         ports:
-        - containerPort: 8000
+        - containerPort: 8000     # Port utilisé par l'application
+        
+        # Variables d'environnement
         env:
         - name: PORT
-          value: "8000"
-        - name: FRONTEND_URL
-          value: "http://frontend-service:8080"  # Nom court car même namespace
+          value: "8000"           # Port interne de l'application
+        - name: FRONTEND_URL      # URL du frontend (même namespace)
+          value: "http://frontend-service:8080"
         - name: PAIEMENT_SERVICE_URL
           value: "http://paiement-service:3002"
         - name: RESERVATION_SERVICE_URL
           value: "http://reservation-service:3004"
         - name: TRAJET_SERVICE_URL
           value: "http://trajet-service:3004"
+        
+        # Ressources allouées
         resources:
-          requests:
-            cpu: "100m"
-            memory: "128Mi"
-          limits:
-            cpu: "500m"
-            memory: "512Mi"
+          requests:               # Ressources minimales garanties
+            cpu: "100m"           # 0.1 core CPU
+            memory: "128Mi"       # 128 Mebibytes
+          limits:                 # Ressources maximales autorisées
+            cpu: "500m"           # 0.5 core CPU
+            memory: "512Mi"       # 512 Mebibytes
+        
+        # Sonde de vitalité (détecte les pods bloqués)
         livenessProbe:
           httpGet:
-            path: /health
+            path: /health         # Endpoint de santé
             port: 8000
-          initialDelaySeconds: 30
-          periodSeconds: 10
+          initialDelaySeconds: 30 # Délai avant première vérification
+          periodSeconds: 10       # Fréquence des contrôles
+          failureThreshold: 3     # Nombre d'échecs avant redémarrage
+          timeoutSeconds: 5       # Délai d'attente pour la réponse
+        
+        # Sonde de préparation (détecte les pods prêts)
         readinessProbe:
           httpGet:
             path: /health
             port: 8000
-          initialDelaySeconds: 5
+          initialDelaySeconds: 5  # Délai plus court que livenessProbe
           periodSeconds: 5
+          failureThreshold: 3
+          timeoutSeconds: 3
+
+      # Volumes montés (configuration supplémentaire)
+      volumes:
+      - name: config-volume
+        configMap:
+          name: api-gateway-config  # Référence à une ConfigMap existante
