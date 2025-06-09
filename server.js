@@ -42,7 +42,7 @@ app.use((req, res, next) => {
 // Route pour la racine
 app.get('/', (req, res) => {
   res.status(200).json({
-    message: "Bienvenue sur l'API Gateway TunisBus",
+    message: "Bienvenue sur l'API Gateway",
     version: process.env.npm_package_version || '1.0.0',
     documentation: process.env.API_DOCS_URL || '/api-docs',
     requestId: req.requestId,
