@@ -9,6 +9,7 @@ spec:
     rollingUpdate:
       maxSurge: 1
       maxUnavailable: 0
+    type: RollingUpdate
   selector:
     matchLabels:
       app: api-gateway
@@ -25,8 +26,10 @@ spec:
         env:
         - name: PORT
           value: "8000"
+        - name: NODE_ENV
+          value: "production"
         - name: FRONTEND_URL
-          value: "http://frontend-service:8080"  # Nom court car même namespace
+          value: "http://frontend-service:8080"
         - name: PAIEMENT_SERVICE_URL
           value: "http://paiement-service:3002"
         - name: RESERVATION_SERVICE_URL
@@ -44,11 +47,19 @@ spec:
           httpGet:
             path: /health
             port: 8000
-          initialDelaySeconds: 30
+          initialDelaySeconds: 45  # Augmenté pour les applications Node.js
           periodSeconds: 10
+          timeoutSeconds: 5  # Explicitement défini
+          failureThreshold: 3
         readinessProbe:
           httpGet:
             path: /health
             port: 8000
-          initialDelaySeconds: 5
+          initialDelaySeconds: 10  # Plus long que le démarrage typique
           periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          readOnlyRootFilesystem: true
