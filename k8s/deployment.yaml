@@ -4,7 +4,7 @@ metadata:
   name: api-gateway
   namespace: frontend
 spec:
-  replicas: 2
+  replicas: 3
   strategy:
     rollingUpdate:
       maxSurge: 1
